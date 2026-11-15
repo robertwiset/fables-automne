@@ -710,8 +710,27 @@ function renderHealthBlock(char, st, container, isOwner) {
 }
 
 function toggleCreateForm() {
-  document.getElementById('create-form-wrapper').classList.toggle('hidden');
+  const wrap = document.getElementById('create-form-wrapper');
+  const isOpening = wrap.classList.contains('hidden');
+  if (isOpening) {
+    resetCreationForm();
+    wrap.classList.remove('hidden');
+  } else {
+    cancelCreation();
+  }
 }
+
+function cancelCreation() {
+  resetCreationForm();
+  document.getElementById('create-form-wrapper').classList.add('hidden');
+}
+
+function resetCreationForm() {
+  CREATE_CARACS = { Force: 8, Agilité: 8, Santé: 8, Connaissance: 8, Perception: 8, Présence: 8 };
+  CREATE_PORTRAIT = '';
+  if (RULES) initCreationForm();
+}
+
 
 function handlePortraitUpload(input) {
   const file = input.files.at(0);

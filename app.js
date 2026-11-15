@@ -145,10 +145,11 @@ async function refreshAllData(force) {
     sb.from('roll_history').select('*').order('created_at', { ascending: false }).limit(40),
     sb.from('combat_state').select('*').eq('id', 1).single()
   ]);
-  const newChars = results.data || [];
-  const newScene = results.data || { environment: 'Normal', cover_terrain: 'Aucun', cover_obstacle: 'Aucun', cover_noise: 'Normal', cover_light: 'Normale' };
-  const newRolls = results.data || [];
-  const newCombat = results.data || { status: 'inactif', participants: [] };
+  const newChars = results[0].data || [];
+  const newScene = results[1].data || { environment: 'Normal', cover_terrain: 'Aucun', cover_obstacle: 'Aucun', cover_noise: 'Normal', cover_light: 'Normale' };
+  const newRolls = results[2].data || [];
+  const newCombat = results[3].data || { status: 'inactif', participants: [] };
+
 
   const snapshot = JSON.stringify({ c: newChars, s: newScene, r: newRolls, cb: newCombat });
   if (!force && snapshot === LAST_SNAPSHOT) return;

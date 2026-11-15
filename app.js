@@ -269,16 +269,26 @@ function getEffectiveState(char) {
   let rawArmorMalusAgi = 0;
   ['Tete', 'Torse', 'Bassin', 'BrasDroit', 'BrasGauche', 'Jambes'].forEach(function(slot) {
     const idx = worn[slot];
-    if (idx !== undefined && idx !== null && inv[idx]) {
-      armorDef += (inv[idx].def || 0);
-      rawArmorMalusAgi += (inv[idx].malus_agi || 0);
+    if (idx !== undefined && idx !== null && inv.at(idx)) {
+      armorDef += (inv.at(idx).def || 0);
+      rawArmorMalusAgi += (inv.at(idx).malus_agi || 0);
     }
   });
 
+  const normTalents = talents.map(function(t) {
+    return t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  });
+
   let armorMalusAgi = Math.floor(rawArmorMalusAgi);
-  if (talents.includes('Entraînement aux armures légères')) armorMalusAgi = Math.max(0, armorMalusAgi - 2);
-  if (talents.includes('Entraînement aux armures lourdes')) armorMalusAgi = Math.max(0, armorMalusAgi - 2);
+  if (normTalents.includes('entrainement aux armures legeres')) {
+    armorMalusAgi = Math.max(0, armorMalusAgi - 2);
+  }
+  if (normTalents.includes('entrainement aux armures lourdes')) {
+    armorMalusAgi = Math.max(0, armorMalusAgi - 2);
+  }
+
   caracs['Agilité'] = (caracs['Agilité'] || 8) - armorMalusAgi;
+
   
   let maxWeight = caracs['Force'] * 2;
   if (talents.includes('Transport')) maxWeight += 8;

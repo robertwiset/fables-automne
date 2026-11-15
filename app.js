@@ -469,8 +469,8 @@ function computeMagicPower(char, st) {
 }
 
 function renderMagicBlock(char, st, mount) {
-  const baseRituels = ['Formule', 'Gestuelle', 'Inscription', 'Catalyseur', 'Ingrédient', 'Transe'];
-  const talentRituels = ['Danse sacrée', 'Extase', 'Horoscope', 'Humilité', 'Incantation', 'Invocation', 'Méditation', 'Momentum', 'Pacifisme', 'Pauvreté', 'Pureté', 'Sacrifice', 'Solennité', 'Talisman', 'Assistance', 'Potion', 'Alchimie', 'Elixir'];
+  const baseRituels = new Array('Formule', 'Gestuelle', 'Inscription', 'Catalyseur', 'Ingrédient', 'Transe');
+  const talentRituels = new Array('Danse sacrée', 'Extase', 'Horoscope', 'Humilité', 'Incantation', 'Invocation', 'Méditation', 'Momentum', 'Pacifisme', 'Pauvreté', 'Pureté', 'Sacrifice', 'Solennité', 'Talisman', 'Assistance', 'Potion', 'Alchimie', 'Elixir');
   const ownedTalentRituels = talentRituels.filter(function(r) { return st.talents.includes(r); });
 
   const ritBox = el('div', 'bg-purple-50 border space-y-2');
@@ -481,7 +481,7 @@ function renderMagicBlock(char, st, mount) {
     wrap.style.background = '#fff'; wrap.style.fontSize = '12px';
     const sel = el('select', '');
     sel.style.marginLeft = '6px';
-    [0, 1, 2].forEach(function(v) {
+    new Array(0, 1, 2).forEach(function(v) {
       const o = el('option', '', v === 0 ? 'Inactif' : '+' + v);
       o.value = v;
       if ((ACTIVE_RITUELS[rName] || 0) == v) o.selected = true;
@@ -502,7 +502,7 @@ function renderMagicBlock(char, st, mount) {
       wrap.style.background = '#fff'; wrap.style.fontSize = '12px';
       const sel = el('select', '');
       sel.style.marginLeft = '6px';
-      [0, 1, 2, 3, 4].forEach(function(v) {
+      new Array(0, 1, 2, 3, 4).forEach(function(v) {
         const o = el('option', '', v === 0 ? 'Inactif' : '+' + v);
         o.value = v;
         if ((ACTIVE_RITUELS[rName] || 0) == v) o.selected = true;
@@ -541,6 +541,7 @@ function renderMagicBlock(char, st, mount) {
   }
   mount.appendChild(spBox);
 }
+
 
 
 

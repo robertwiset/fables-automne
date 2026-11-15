@@ -830,10 +830,19 @@ RULES.classes.forEach(function(c) { const o = el('option', '', c.nom); o.value =
 mount.appendChild(selCl);
 const clGrid = el('div', 'grid grid-cols-2'); clGrid.id = 'c-classe-talents';
 mount.appendChild(clGrid);
-const btnSave = el('button', 'bg-amber-800', 'Créer le personnage');
-btnSave.style.width = '100%';
-btnSave.onclick = saveNewCharacter;
-mount.appendChild(btnSave);
+  const btnRow = el('div', 'flex');
+  const btnSave = el('button', 'bg-amber-800', 'Créer le personnage');
+  btnSave.style.flex = '2';
+  btnSave.onclick = saveNewCharacter;
+
+  const btnCancel = el('button', '', 'Annuler la création');
+  btnCancel.style.flex = '1';
+  btnCancel.onclick = cancelCreation;
+
+  btnRow.appendChild(btnSave);
+  btnRow.appendChild(btnCancel);
+  mount.appendChild(btnRow);
+
 updateCreationChoices();
 }
 function changeCreateCarac(c, delta) {

@@ -239,6 +239,14 @@ function getEffectiveState(char) {
     }
   });
 
+  let sorts = (d.sorts || []).slice();
+  const lvlUpSorts = d.level_sorts || {};
+  Object.keys(lvlUpSorts).forEach(function(lvl) {
+    if (parseInt(lvl) <= effLvl) {
+      sorts = sorts.concat(lvlUpSorts[lvl] || []);
+    }
+  });
+
   const blessures = d.blessures || {};
   let maxWoundMalus = 0;
   let limbDisabled = false;
@@ -254,17 +262,26 @@ function getEffectiveState(char) {
 
   const inv = d.inventaire || [];
   const worn = d.worn || {};
+  const equipped = d.equipped || {};
   let totalWeight = 0;
   inv.forEach(function(item) { totalWeight += (item.poids || 0); });
 
   let armorDef = 0;
   let rawArmorMalusAgi = 0;
   ['Tete', 'Torse', 'Bassin', 'BrasDroit', 'BrasGauche', 'Jambes'].forEach(function(slot) {
-    const idx = worn[slot];
-    if (idx !== undefined && idx !== null && inv.at(idx)) {
-      armorDef += (inv.at(idx).def || 0);
-      rawArmorMalusAgi += (inv.at(idx).malus_agi || 0);
+    const eqItem = equipped[slot];
+    if (eqItem) {
+      totalWeight += (eqItem.poids || 0);
+      armorDef += (eqItem.def || 0);
+      rawArmorMalusAgi += (eqItem.malus_agi || 0);
+    } else if (worn[slot] !== undefined && worn[slot] !== null && inv.at(worn[slot])) {
+      armorDef += (inv.at(worn[slot]).def || 0);
+      rawArmorMalusAgi += (inv.at(worn[slot]).malus_agi || 0);
     }
+  });
+
+  ['MainPrincipale', 'MainSecondaire', 'Monture'].forEach(function(slot) {
+    if (equipped[slot]) totalWeight += (equipped[slot].poids || 0);
   });
 
   const normTalents = talents.map(function(t) {
@@ -285,7 +302,7 @@ function getEffectiveState(char) {
   const emotionObj = RULES.emotions.find(function(e) { return e.nom === (d.emotion || 'Aucune'); }) || { comp: 0, att: 0, def: 0 };
   const fatigue = d.fatigue || 0;
 
-  return { caracs: caracs, talents: talents, normTalents: normTalents, maxWoundMalus: maxWoundMalus, limbDisabled: limbDisabled, totalWeight: totalWeight, maxWeight: maxWeight, encumbered: encumbered, armorDef: armorDef, armorMalusAgi: armorMalusAgi, emotionObj: emotionObj, fatigue: fatigue, worn: worn, inv: inv, blessures: blessures };
+  return { caracs: caracs, talents: talents, sorts: sorts, normTalents: normTalents, maxWoundMalus: maxWoundMalus, limbDisabled: limbDisabled, totalWeight: totalWeight, maxWeight: maxWeight, encumbered: encumbered, armorDef: armorDef, armorMalusAgi: armorMalusAgi, emotionObj: emotionObj, fatigue: fatigue, worn: worn, equipped: equipped, inv: inv, blessures: blessures };
 }
 function getCoverTotals() {
   const t = RULES.couverture.terrain.find(function(x) { return x.nom === SCENE.cover_terrain; }) || { malus: 0, bonus: 0 };
@@ -488,54 +505,34 @@ function renderMagicBlock(char, st, mount) {
   pBtn.onclick = function() { rollMagicTest(char, 'Pouvoir brut', pow); };
   mount.appendChild(pBtn);
 
-  const knownSpells = char.data.sorts || [];
+  const knownSpells = st.sorts || [];
   const spBox = el('div', 'border space-y-2');
-  const spTop = el('div', 'flex justify-between');
-  spTop.appendChild(el('strong', '', 'Sorts connus (' + knownSpells.length + ') :'));
-const addSpWrap = el('div', 'flex');
-const selVoie = el('select', '');
-(RULES.voies_magiques || []).forEach(function(v) { const o = el('option', '', v.voie); o.value = v.voie; selVoie.appendChild(o); });
-const selSort = el('select', '');
-const fillSorts = function() {
-selSort.innerHTML = '';
-const vObj = (RULES.voies_magiques || []).find(function(x) { return x.voie === selVoie.value; });
-if (vObj) vObj.sorts.forEach(function(s) { const o = el('option', '', s); o.value = s; selSort.appendChild(o); });
-};
-fillSorts();
-selVoie.onchange = fillSorts;
-const bAddSp = el('button', 'bg-purple-700', '+ Ajouter');
-bAddSp.onclick = function() { addSpellToChar(char.id, selVoie.value, selSort.value); };
-addSpWrap.appendChild(selVoie); addSpWrap.appendChild(selSort); addSpWrap.appendChild(bAddSp);
-spTop.appendChild(addSpWrap);
-spBox.appendChild(spTop);
-const spGrid = el('div', 'grid grid-cols-2');
-knownSpells.forEach(function(sp, idx) {
-const row = el('div', 'flex justify-between border bg-stone-50');
-const bCast = el('button', '', sp.nom + ' (' + sp.voie + ') — 1d20 ' + pSign + pow.total);
-bCast.style.border = 'none'; bCast.style.background = 'transparent'; bCast.style.textAlign = 'left'; bCast.style.flex = '1';
-bCast.onclick = function() { rollMagicTest(char, sp.nom + ' (' + sp.voie + ')', pow); };
-const bDel = el('button', '', 'x');
-bDel.style.color = '#dc2626';
-bDel.onclick = function() { removeSpellFromChar(char.id, idx); };
-row.appendChild(bCast); row.appendChild(bDel);
-spGrid.appendChild(row);
-});
-spBox.appendChild(spGrid);
-mount.appendChild(spBox);
+  spBox.appendChild(el('strong', '', 'Sorts connus (' + knownSpells.length + ') :'));
+  if (knownSpells.length === 0) {
+    spBox.appendChild(el('div', '', 'Aucun sort appris (géré lors du passage de niveau).'));
+  } else {
+    const spGrid = el('div', 'grid grid-cols-2');
+    knownSpells.forEach(function(sp) {
+      const bCast = el('button', 'border bg-stone-50', sp.nom + ' (' + sp.voie + ') — 1d20 ' + pSign + pow.total);
+      bCast.style.textAlign = 'left';
+      bCast.onclick = function() { rollMagicTest(char, sp.nom + ' (' + sp.voie + ')', pow); };
+      spGrid.appendChild(bCast);
+    });
+    spBox.appendChild(spGrid);
+  }
+  mount.appendChild(spBox);
 }
-async function addSpellToChar(charId, voie, nom) {
-const char = CHARACTERS.find(function(c) { return c.id === charId; });
-const sorts = (char.data.sorts || []).slice();
-if (sorts.some(function(s) { return s.nom === nom; })) return;
-sorts.push({ voie: voie, nom: nom });
-await updateCharField(charId, 'sorts', sorts);
+
+async function rollMagicTest(char, label, pow) {
+  const d20 = Math.floor(Math.random() * 20) + 1;
+  const total = d20 + pow.total;
+  const details = '1d20 (' + d20 + ') | ' + pow.parts.join(', ');
+  await sb.from('roll_history').insert({
+    character_id: char.id, owner_id: CURRENT_USER.id, character_name: char.name,
+    is_public: char.is_public, skill_name: 'Magie : ' + label, total: total, details: details
+  });
 }
-async function removeSpellFromChar(charId, idx) {
-const char = CHARACTERS.find(function(c) { return c.id === charId; });
-const sorts = (char.data.sorts || []).slice();
-sorts.splice(idx, 1);
-await updateCharField(charId, 'sorts', sorts);
-}
+
 async function rollMagicTest(char, label, pow) {
 const d20 = Math.floor(Math.random() * 20) + 1;
 const total = d20 + pow.total;
@@ -864,11 +861,14 @@ function getCreationTempCaracs() {
   return res;
 }
 
-function isTalentEligible(talentName, caracs, acquiredTalents) {
+function isTalentEligible(talentName, caracs, acquiredTalents, targetLevel) {
+  const lvl = targetLevel || 1;
   const t = RULES.talents.find(function(x) { return x.nom === talentName; });
   if (!t) return false;
-  if (t.niveau_min && t.niveau_min > 1) return false;
-  if (!t.cumulable && acquiredTalents.includes(talentName)) return false;
+  if (t.niveau_min && t.niveau_min > lvl) return false;
+  const count = acquiredTalents.filter(function(x) { return x === talentName; }).length;
+  if (!t.cumulable && count >= 1) return false;
+  if (t.max_prises && count >= t.max_prises) return false;
   const reqC = t.caracs || {};
   for (const c of Object.keys(reqC)) {
     if ((caracs[c] || 0) < reqC[c]) return false;
@@ -878,6 +878,17 @@ function isTalentEligible(talentName, caracs, acquiredTalents) {
     if (!acquiredTalents.includes(reqT[i])) return false;
   }
   return true;
+}
+
+let LVL_DRAFT = { charId: null, carac: '', t1: '', t2: '', te: '', spells: [] };
+function getSpellSlotsForTalents(tList) {
+  let slots = [];
+  tList.forEach(function(t) {
+    if (t === 'Initiation magique') slots.push('Initiation magique (1 sort)');
+    if (t === 'Apprentissage magique') { slots.push('Apprentissage magique (Sort 1)'); slots.push('Apprentissage magique (Sort 2)'); }
+    if (t === 'Maîtrise magique') { slots.push('Maîtrise magique (Sort 1)'); slots.push('Maîtrise magique (Sort 2)'); }
+  });
+  return slots;
 }
 
 function updateCreationChoices() {
@@ -1017,135 +1028,7 @@ async function saveNewCharacter() {
   switchTab('play');
 }
 
-function renderManageSheet() {
-  const charId = document.getElementById('sheet-char-select').value;
-  const char = CHARACTERS.find(function(c) { return c.id === charId; });
-  const container = document.getElementById('manage-sheet-container');
-  container.innerHTML = '';
-  if (!char) { container.textContent = "Aucun personnage sélectionné."; return; }
 
-  const isOwner = char.owner_id === CURRENT_USER.id;
-  const st = getEffectiveState(char);
-
-  const header = el('div', 'flex justify-between border bg-stone-50');
-  const titleBox = el('div', '');
-  titleBox.appendChild(el('strong', '', char.name + (char.is_public ? '' : ' [Masqué]')));
-  titleBox.appendChild(el('div', '', char.data.peuple + ' • ' + char.data.culture + ' • ' + char.data.classe));
-  header.appendChild(titleBox);
-
-  if (isOwner) {
-    const ctrl = el('div', 'flex');
-    ctrl.appendChild(el('span', '', 'Niveau : ' + char.level));
-    const bUp = el('button', 'bg-amber-800', '+1 Niv'); bUp.onclick = function() { changeLevel(char.id, 1); };
-    const bDown = el('button', '', '-1 Niv'); bDown.onclick = function() { changeLevel(char.id, -1); };
-    const selEff = el('select', '');
-    for (let i = 1; i <= char.level; i++) {
-      const o = el('option', '', 'Effectif : ' + i); o.value = i;
-      if (i === char.effective_level) o.selected = true;
-      selEff.appendChild(o);
-    }
-    selEff.onchange = function() { setEffectiveLevel(char.id, selEff.value); };
-    const bPub = el('button', '', char.is_public ? 'Masquer' : 'Rendre public'); bPub.onclick = function() { togglePublic(char.id); };
-    const bTrans = el('button', '', 'Transférer'); bTrans.onclick = function() { transferCharacter(char.id); };
-    const bDel = el('button', 'bg-rose-700', 'Supprimer'); bDel.onclick = function() { deleteCharacter(char.id); };
-    ctrl.appendChild(bUp); ctrl.appendChild(bDown); ctrl.appendChild(selEff); ctrl.appendChild(bPub); ctrl.appendChild(bTrans); ctrl.appendChild(bDel);
-    header.appendChild(ctrl);
-  }
-  container.appendChild(header);
-
-  const eqBox = el('div', 'border space-y-2');
-  const eqTop = el('div', 'flex justify-between');
-  eqTop.appendChild(el('strong', '', 'Équipement (' + st.totalWeight + ' / ' + st.maxWeight + ' kg)'));
-  if (isOwner) {
-    const addWrap = el('div', 'flex');
-    const inpFilter = el('input', ''); inpFilter.type = 'text'; inpFilter.placeholder = 'Rechercher...';
-    const selEq = el('select', ''); selEq.id = 'add-equip-sel';
-    const fillEquipOptions = function(term) {
-const q = (term || '').toLowerCase().trim();
-selEq.innerHTML = '';
-RULES.equipements.forEach(function(e, i) {
-if (!q || e.nom.toLowerCase().includes(q) || (e.categorie && e.categorie.toLowerCase().includes(q))) {
-const o = el('option', '', e.nom + ' (' + e.poids + 'kg)'); o.value = i; selEq.appendChild(o);
-}
-});
-};
-fillEquipOptions('');
-inpFilter.oninput = function() { fillEquipOptions(inpFilter.value); };
-const bAddEq = el('button', 'bg-amber-800', 'Ajouter'); bAddEq.onclick = function() { addEquipment(char.id); };
-addWrap.appendChild(inpFilter); addWrap.appendChild(selEq); addWrap.appendChild(bAddEq);
-eqTop.appendChild(addWrap);
-}
-eqBox.appendChild(eqTop);
-const slotGrid = el('div', 'grid grid-cols-3');
-const slots = [
-{ key: 'MainPrincipale', label: 'Main principale', filter: function(e) { return e.categorie === 'Arme'; } },
-{ key: 'MainSecondaire', label: 'Main secondaire', filter: function(e) { return e.categorie === 'Arme' || e.categorie === 'Bouclier'; } },
-{ key: 'Tete', label: 'Tête', filter: function(e) { return e.slot === 'Tête'; } },
-{ key: 'Torse', label: 'Torse', filter: function(e) { return e.slot === 'Torse'; } },
-{ key: 'Bassin', label: 'Bassin', filter: function(e) { return e.slot === 'Bassin'; } },
-{ key: 'BrasDroit', label: 'Bras droit', filter: function(e) { return e.slot === 'Bras'; } },
-{ key: 'BrasGauche', label: 'Bras gauche', filter: function(e) { return e.slot === 'Bras'; } },
-{ key: 'Jambes', label: 'Jambes', filter: function(e) { return e.slot === 'Jambes'; } },
-{ key: 'Monture', label: 'Monture', filter: function(e) { return e.categorie === 'Monture'; } }
-];
-slots.forEach(function(sl) {
-const mainItem = st.inv.at(st.worn['MainPrincipale']);
-const locked = sl.key === 'MainSecondaire' && mainItem && mainItem.mains === 2;
-const sCard = el('div', 'border bg-stone-50');
-sCard.appendChild(el('strong', '', sl.label));
-const sSel = el('select', ''); sSel.style.width = '100%'; sSel.style.marginTop = '4px';
-sSel.disabled = !isOwner || locked;
-const optNone = el('option', '', locked ? '(Bloqué : arme 2 mains)' : '— Aucun —'); optNone.value = '';
-sSel.appendChild(optNone);
-st.inv.forEach(function(item, idx) {
-if (sl.filter(item)) {
-const o = el('option', '', item.nom); o.value = idx;
-if (st.worn[sl.key] === idx) o.selected = true;
-sSel.appendChild(o);
-}
-});
-sSel.onchange = function() { equipSlot(char.id, sl.key, sSel.value); };
-sCard.appendChild(sSel);
-slotGrid.appendChild(sCard);
-});
-eqBox.appendChild(slotGrid);
-const invList = el('div', 'flex');
-st.inv.forEach(function(item, idx) {
-const badge = el('span', 'border bg-stone-50', item.nom + ' (' + item.poids + 'kg) ');
-if (isOwner && idx > 0) {
-const rx = el('button', '', 'x'); rx.style.color = '#dc2626'; rx.style.padding = '1px 5px';
-rx.onclick = function() { removeEquipment(char.id, idx); };
-badge.appendChild(rx);
-}
-invList.appendChild(badge);
-});
-eqBox.appendChild(invList);
-container.appendChild(eqBox);
-const talBox = el('div', 'border space-y-2');
-const talTop = el('div', 'flex justify-between');
-talTop.appendChild(el('strong', '', 'Talents actifs (' + st.talents.length + ')'));
-if (isOwner && st.talents.includes('Adaptation')) {
-const selAd = el('select', '');
-['Forêt', 'Désert', 'Montagne', 'Froid', 'Chaleur', 'Mer'].forEach(function(m) {
-const o = el('option', '', 'Adaptation : ' + m); o.value = m;
-if (char.data.adaptation_milieu === m) o.selected = true;
-selAd.appendChild(o);
-});
-selAd.onchange = function() { updateCharField(char.id, 'adaptation_milieu', selAd.value); };
-talTop.appendChild(selAd);
-}
-talBox.appendChild(talTop);
-const talGrid = el('div', 'grid grid-cols-2');
-st.talents.forEach(function(tName) {
-const tObj = RULES.talents.find(function(x) { return x.nom === tName; });
-const tc = el('div', 'border bg-stone-50');
-tc.appendChild(el('strong', '', tName));
-tc.appendChild(el('div', '', tObj ? tObj.effet : ''));
-talGrid.appendChild(tc);
-});
-talBox.appendChild(talGrid);
-container.appendChild(talBox);
-}
 async function updateCharData(charId, newData) {
   await sb.from('characters').update({ data: newData }).eq('id', charId);
 }
@@ -1176,359 +1059,297 @@ async function transferCharacter(charId) {
   alert("Personnage transféré !");
 }
 
-async function changeLevel(charId, delta) {
-  const char = CHARACTERS.find(function(c) { return c.id === charId; });
-  const newLvl = char.level + delta;
-  if (newLvl < 1 || newLvl > 30) return;
-  const d = Object.assign({}, char.data);
-  if (delta > 0) {
-    const tempChar = Object.assign({}, char, { effective_level: char.level });
-    const st = getEffectiveState(tempChar);
-    if (newLvl % 5 === 0) {
-      const prevC = d.level_caracs ? d.level_caracs[newLvl - 5] : null;
-      const availC = RULES.caracteristiques.filter(function(c) { return c !== prevC; });
-      const choiceC = prompt("Niveau " + newLvl + " ! Choisissez une caractéristique +1 (" + availC.join(', ') + ") :");
-      if (availC.includes(choiceC)) {
-        d.level_caracs = Object.assign({}, d.level_caracs || {});
-        d.level_caracs[newLvl] = choiceC;
-        st.caracs[choiceC] += 1;
-      } else {
-        return alert("Caractéristique invalide ou identique au palier précédent.");
-      }
-    }
-    const elig1 = RULES.talents.filter(function(t) { return t.type === 'commun' && isTalentEligible(t.nom, st.caracs, st.talents); }).map(function(t) { return t.nom; });
-    const t1 = prompt("Niveau " + newLvl + " — Talent 1/2 parmi :\n" + elig1.join(', '));
-    if (!elig1.includes(t1)) return alert("Talent 1 invalide.");
-    const elig2 = RULES.talents.filter(function(t) { return t.type === 'commun' && isTalentEligible(t.nom, st.caracs, st.talents.concat([t1])); }).map(function(t) { return t.nom; });
-    const t2 = prompt("Niveau " + newLvl + " — Talent 2/2 parmi :\n" + elig2.join(', '));
-    if (!elig2.includes(t2)) return alert("Talent 2 invalide.");
-    const gained = [t1, t2];
-    if ([15, 18, 21, 24, 27, 30].includes(newLvl)) {
-      const epiques = RULES.talents.filter(function(t) { return t.type === 'epique' && !st.talents.includes(t.nom); }).map(function(t) { return t.nom; });
-      const te = prompt("Palier Épique ! Choisissez 1 talent épique :\n" + epiques.join(', '));
-      if (!epiques.includes(te)) return alert("Talent épique invalide.");
-      gained.push(te);
-    }
-    d.level_talents = Object.assign({}, d.level_talents || {});
-    d.level_talents[newLvl] = gained;
-  }
-  await sb.from('characters').update({ level: newLvl, effective_level: newLvl, data: d }).eq('id', charId);
-}
 
-async function setEffectiveLevel(charId, lvl) {
-  await sb.from('characters').update({ effective_level: parseInt(lvl) }).eq('id', charId);
-}
-
-async function changeFatigue(charId, delta) {
+function renderManageSheet() {
+  const charId = document.getElementById('sheet-char-select').value;
   const char = CHARACTERS.find(function(c) { return c.id === charId; });
+  const container = document.getElementById('manage-sheet-container');
+  container.innerHTML = '';
+  if (!char) { container.textContent = "Aucun personnage sélectionné."; return; }
+
+  const isOwner = char.owner_id === CURRENT_USER.id;
   const st = getEffectiveState(char);
-  const maxFat = st.caracs['Santé'] || 10;
-  const infectedCount = Object.values(char.data.blessures || {}).filter(function(b) { return b && b.infectee; }).length;
-  const newFat = Math.min(maxFat, Math.max(infectedCount, (char.data.fatigue || 0) + delta));
-  await updateCharField(charId, 'fatigue', newFat);
-}
 
-async function addEquipment(charId) {
-  const char = CHARACTERS.find(function(c) { return c.id === charId; });
-  const idx = parseInt(document.getElementById('add-equip-sel').value);
-  const item = Object.assign({}, RULES.equipements.at(idx));
-  const inv = (char.data.inventaire || []).concat([item]);
-  await updateCharField(charId, 'inventaire', inv);
-}
+  const header = el('div', 'flex justify-between border bg-stone-50');
+  const titleBox = el('div', '');
+  titleBox.appendChild(el('strong', '', char.name + (char.is_public ? '' : ' [Masqué]')));
+  titleBox.appendChild(el('div', '', char.data.peuple + ' • ' + char.data.culture + ' • ' + char.data.classe + ' • Force : ' + st.caracs['Force'] + ' • Agi : ' + st.caracs['Agilité']));
+  header.appendChild(titleBox);
 
-async function removeEquipment(charId, idx) {
-  const char = CHARACTERS.find(function(c) { return c.id === charId; });
-  const inv = (char.data.inventaire || []).slice();
-  inv.splice(idx, 1);
-  const worn = Object.assign({}, char.data.worn || {});
-  Object.keys(worn).forEach(function(k) {
-    if (worn[k] === idx) delete worn[k];
-    else if (worn[k] > idx) worn[k] -= 1;
-  });
-  const d = Object.assign({}, char.data, { inventaire: inv, worn: worn });
-  await updateCharData(charId, d);
-}
-
-async function equipSlot(charId, slot, idxStr) {
-  const char = CHARACTERS.find(function(c) { return c.id === charId; });
-  const worn = Object.assign({}, char.data.worn || {});
-  if (idxStr === "") delete worn[slot];
-  else {
-    const idx = parseInt(idxStr);
-    worn[slot] = idx;
-    if (slot === 'MainPrincipale' && char.data.inventaire.at(idx) && char.data.inventaire.at(idx).mains === 2) {
-      delete worn['MainSecondaire'];
+  if (isOwner) {
+    const ctrl = el('div', 'flex');
+    ctrl.appendChild(el('strong', '', 'Niveau réel : ' + char.level));
+    if (char.level > 1) {
+      const bDown = el('button', '', '-1 Niv');
+      bDown.onclick = function() { revertLastLevel(char.id); };
+      ctrl.appendChild(bDown);
     }
+    const selEff = el('select', '');
+    for (let i = 1; i <= char.level; i++) {
+      const o = el('option', '', 'Niveau effectif : ' + i); o.value = i;
+      if (i === char.effective_level) o.selected = true;
+      selEff.appendChild(o);
+    }
+    selEff.onchange = function() { setEffectiveLevel(char.id, selEff.value); };
+    const bPub = el('button', '', char.is_public ? 'Masquer' : 'Rendre public'); bPub.onclick = function() { togglePublic(char.id); };
+    const bTrans = el('button', '', 'Transférer'); bTrans.onclick = function() { transferCharacter(char.id); };
+    const bDel = el('button', 'bg-rose-700', 'Supprimer'); bDel.onclick = function() { deleteCharacter(char.id); };
+    ctrl.appendChild(selEff); ctrl.appendChild(bPub); ctrl.appendChild(bTrans); ctrl.appendChild(bDel);
+    header.appendChild(ctrl);
   }
-  await updateCharField(charId, 'worn', worn);
-}
+  container.appendChild(header);
 
-async function setWoundLevel(charId, loc, gravite) {
-  const char = CHARACTERS.find(function(c) { return c.id === charId; });
-  const blessures = Object.assign({}, char.data.blessures || {});
-  if (gravite === 0) delete blessures[loc];
-  else {
-    const mult = [0, 1, 2, 4, 8, 12, 16].at(gravite) || 1;
-    const d1 = Math.floor(Math.random() * 6) + 1;
-    const d2 = Math.floor(Math.random() * 6) + 1;
-    const baseDice = gravite === 6 ? (d1 + d2 + Math.floor(Math.random() * 6) + 1 + Math.floor(Math.random() * 6) + 1) : (d1 + d2);
-    const jours = baseDice * mult;
-    blessures[loc] = { gravite: gravite, infectee: false, jours: jours };
+  if (isOwner && char.level < 30) {
+    renderLevelUpBox(char, container);
   }
-  await updateCharField(charId, 'blessures', blessures);
-}
 
-async function rollRandomWound(charId, type) {
-  const locs = ['Tête', 'Torse', 'Ventre/Bassin', 'Bras droit', 'Bras gauche', 'Jambe(s)'];
-  const loc = locs.at(Math.floor(Math.random() * 6));
-  const d1 = Math.floor(Math.random() * 6) + 1;
-  const d2 = Math.floor(Math.random() * 6) + 1;
-  let grav = d1;
-  if (type === 'legere') grav = Math.min(d1, d2);
-  if (type === 'grave') grav = Math.max(d1, d2);
-  await setWoundLevel(charId, loc, grav);
-  alert("Blessure " + type + " localisée : " + loc + " (Gravité " + grav + ")");
-}
+  renderCareerHistory(char, container);
 
-async function rollFeverTest(charId) {
-  const char = CHARACTERS.find(function(c) { return c.id === charId; });
-  const st = getEffectiveState(char);
-  const comp = RULES.competences.find(function(c) { return c.nom === 'Résistance'; });
-  const mod = computeSkillModifier(char, st, comp).total;
-  const roll = (Math.floor(Math.random() * 6) + 1) + (Math.floor(Math.random() * 6) + 1) + (Math.floor(Math.random() * 6) + 1);
-  const total = roll + mod;
-  const success = total >= 10;
-  await sb.from('roll_history').insert({
-    character_id: char.id, owner_id: CURRENT_USER.id, character_name: char.name,
-    is_public: char.is_public, skill_name: 'Test de Fièvre (D10)', total: total,
-    details: '3d6 (' + roll + ') + Résistance (' + mod + ') = ' + total + ' -> ' + (success ? 'Réussi' : 'Échec (Infection !)')
-  });
-  if (!success) {
-    const blessures = Object.assign({}, char.data.blessures || {});
-    const keys = Object.keys(blessures);
-    if (keys.length > 0) blessures[keys.at(0)].infectee = true;
-    else blessures['Torse'] = { gravite: 1, infectee: true, jours: 7 };
-    const infCount = Object.values(blessures).filter(function(b) { return b.infectee; }).length;
-    const newFat = Math.max(char.data.fatigue || 0, infCount);
-    const d = Object.assign({}, char.data, { blessures: blessures, fatigue: newFat });
-    await updateCharData(charId, d);
-  }
-}
+  const eqBox = el('div', 'border space-y-3');
+  eqBox.appendChild(el('strong', '', 'Équipement porté & Transport (' + st.totalWeight + ' / ' + st.maxWeight + ' kg)' + (st.encumbered ? ' — ENCOMBRÉ !' : '')));
 
-async function takeRest(charId, type) {
-  const char = CHARACTERS.find(function(c) { return c.id === charId; });
-  const medChk = document.getElementById('rest-med-' + charId);
-  const medOk = medChk ? medChk.checked : false;
-  const blessures = Object.assign({}, char.data.blessures || {});
-  const infectedCount = Object.values(blessures).filter(function(b) { return b && b.infectee; }).length;
-  const newFat = Math.max(infectedCount, (char.data.fatigue || 0) - 2);
-  if (type === 'long') {
-    const dec = medOk ? 2 : 1;
-    Object.keys(blessures).forEach(function(loc) {
-      if (blessures[loc].infectee && medOk) blessures[loc].infectee = false;
-      if (!blessures[loc].infectee) {
-        blessures[loc].jours = Math.max(0, blessures[loc].jours - dec);
-        if (blessures[loc].jours === 0) delete blessures[loc];
+  const slotGrid = el('div', 'grid grid-cols-3');
+  const slots = [
+    { key: 'MainPrincipale', label: 'Main principale', filter: function(e) { return e.categorie === 'Arme' && e.nom !== 'Poings'; } },
+    { key: 'MainSecondaire', label: 'Main secondaire', filter: function(e) { return (e.categorie === 'Arme' && e.nom !== 'Poings' && e.mains === 1) || e.categorie === 'Bouclier'; } },
+    { key: 'Monture', label: 'Monture', filter: function(e) { return e.categorie === 'Monture'; } },
+    { key: 'Tete', label: 'Tête', filter: function(e) { return e.slot === 'Tête'; } },
+    { key: 'Torse', label: 'Torse', filter: function(e) { return e.slot === 'Torse'; } },
+    { key: 'Bassin', label: 'Bassin', filter: function(e) { return e.slot === 'Bassin'; } },
+    { key: 'Jambes', label: 'Jambes', filter: function(e) { return e.slot === 'Jambes'; } },
+    { key: 'BrasDroit', label: 'Bras droit', filter: function(e) { return e.slot === 'Bras'; } },
+    { key: 'BrasGauche', label: 'Bras gauche', filter: function(e) { return e.slot === 'Bras'; } }
+  ];
+
+  const mainEquipped = st.equipped['MainPrincipale'];
+  const twoHandedLocked = mainEquipped && mainEquipped.mains === 2;
+
+  slots.forEach(function(sl) {
+    const locked = sl.key === 'MainSecondaire' && twoHandedLocked;
+    const curItem = st.equipped[sl.key];
+    const sCard = el('div', 'border bg-stone-50');
+    sCard.appendChild(el('strong', '', sl.label));
+    const sSel = el('select', '');
+    sSel.style.width = '100%'; sSel.style.marginTop = '4px'; sSel.style.fontSize = '12px';
+    sSel.disabled = !isOwner || locked;
+
+    const optNone = el('option', '', locked ? '(Bloqué : arme 2 mains)' : (sl.key === 'MainPrincipale' ? 'Poings (0 kg)' : '— Aucun —'));
+    optNone.value = '';
+    sSel.appendChild(optNone);
+
+    RULES.equipements.forEach(function(item, idx) {
+      if (sl.filter(item)) {
+        const reqForce = item.force_min || 0;
+        const weak = reqForce > st.caracs['Force'];
+        let label = item.nom + ' (' + item.poids + 'kg';
+        if (item.categorie === 'Arme') label += ', Dég +' + item.degat + ', Portée ' + item.portee + ', F.' + reqForce;
+        if (item.def) label += ', Déf +' + item.def;
+        if (item.malus_agi) label += ', Agi -' + item.malus_agi;
+        label += ')';
+        if (weak) label += ' [Force insuffisante !]';
+
+        const o = el('option', '', label);
+        o.value = idx;
+        if (curItem && curItem.nom === item.nom) o.selected = true;
+        sSel.appendChild(o);
       }
     });
+    sSel.onchange = function() { setEquippedCatalogItem(char.id, sl.key, sSel.value); };
+    sCard.appendChild(sSel);
+    slotGrid.appendChild(sCard);
+  });
+  eqBox.appendChild(slotGrid);
+
+  const bagTop = el('div', 'flex justify-between');
+  bagTop.style.borderTop = '1px solid #e7e5e4'; bagTop.style.paddingTop = '8px';
+  bagTop.appendChild(el('strong', '', 'Équipement transporté en plus (Sac à dos) :'));
+  if (isOwner) {
+    const addWrap = el('div', 'flex');
+    const inpFilter = el('input', ''); inpFilter.type = 'text'; inpFilter.placeholder = 'Filtrer...';
+    const selEq = el('select', ''); selEq.id = 'add-equip-sel';
+    const fillEquipOptions = function(term) {
+      const q = (term || '').toLowerCase().trim();
+      selEq.innerHTML = '';
+      RULES.equipements.forEach(function(e, i) {
+        if (e.nom !== 'Poings' && (!q || e.nom.toLowerCase().includes(q) || (e.categorie && e.categorie.toLowerCase().includes(q)))) {
+          const o = el('option', '', e.nom + ' (' + e.poids + 'kg)'); o.value = i; selEq.appendChild(o);
+        }
+      });
+    };
+    fillEquipOptions('');
+    inpFilter.oninput = function() { fillEquipOptions(inpFilter.value); };
+    const bAddEq = el('button', 'bg-amber-800', '+ Sac'); bAddEq.onclick = function() { addEquipment(char.id); };
+    addWrap.appendChild(inpFilter); addWrap.appendChild(selEq); addWrap.appendChild(bAddEq);
+    bagTop.appendChild(addWrap);
   }
-  const d = Object.assign({}, char.data, { fatigue: newFat, emotion: 'Aucune', blessures: blessures });
-  await updateCharData(charId, d);
-  alert("Repos " + type + " effectué !");
+  eqBox.appendChild(bagTop);
+
+  const invList = el('div', 'flex');
+  st.inv.forEach(function(item, idx) {
+    if (item.nom === 'Poings') return;
+    const badge = el('span', 'border bg-stone-50', item.nom + ' (' + item.poids + 'kg) ');
+    if (isOwner) {
+      const rx = el('button', '', 'x'); rx.style.color = '#dc2626'; rx.style.padding = '1px 5px';
+      rx.onclick = function() { removeEquipment(char.id, idx); };
+      badge.appendChild(rx);
+    }
+    invList.appendChild(badge);
+  });
+  eqBox.appendChild(invList);
+  container.appendChild(eqBox);
 }
 
-async function startCombat(type) {
-  await sb.from('combat_state').update({
-    status: 'phase1', combat_type: type, participants: [], roll_camp_a: null, roll_camp_b: null, phase1_result: null, phase2_result: null
-  }).eq('id', 1);
-}
+function renderLevelUpBox(char, container) {
+  const nextLvl = char.level + 1;
+  if (LVL_DRAFT.charId !== char.id) {
+    LVL_DRAFT = { charId: char.id, carac: '', t1: '', t2: '', te: '', spells: [] };
+  }
 
-async function resetCombat() {
-  await sb.from('combat_state').update({
-    status: 'inactif', participants: [], roll_camp_a: null, roll_camp_b: null, phase1_result: null, phase2_result: null
-  }).eq('id', 1);
-}
+  const fullChar = Object.assign({}, char, { effective_level: char.level });
+  const baseSt = getEffectiveState(fullChar);
+  const rawCaracs = Object.assign({}, baseSt.caracs);
+  rawCaracs['Agilité'] += baseSt.armorMalusAgi;
 
-async function addToCombat(camp) {
-  const charId = document.getElementById('combat-add-char').value;
-  if (!charId || COMBAT.status === 'inactif') return alert("Démarrez d'abord un combat.");
-  const parts = (COMBAT.participants || []).slice();
-  if (parts.some(function(p) { return p.char_id === charId; })) return alert("Ce personnage est déjà dans le combat.");
-parts.push({
-char_id: charId, camp: camp, posture: 'Défensif', manoeuvre: 'Pas de manœuvre initiale', temp_att: 0, temp_def: 0
+  const hasCaracChoice = (nextLvl % 5 === 0);
+  const prevPalierCarac = (char.data.level_caracs || {})[nextLvl - 5] || '';
+  const availCaracs = RULES.caracteristiques.filter(function(c) { return c !== prevPalierCarac; });
+  if (hasCaracChoice && !availCaracs.includes(LVL_DRAFT.carac)) LVL_DRAFT.carac = '';
+  if (hasCaracChoice && LVL_DRAFT.carac) rawCaracs[LVL_DRAFT.carac] += 1;
+
+  const hasEpique = [15, 18, 21, 24, 27, 30].includes(nextLvl);
+
+  const box = el('div', 'border bg-amber-50 space-y-3');
+  box.appendChild(el('strong', '', 'Passage au Niveau ' + nextLvl + ' :'));
+
+  const row = el('div', 'grid grid-cols-2');
+
+  if (hasCaracChoice) {
+    const cDiv = el('div', '');
+    cDiv.appendChild(el('div', '', 'Caractéristique +1 (hors ' + (prevPalierCarac || 'aucune') + ') :'));
+    const selC = el('select', ''); selC.style.width = '100%';
+    const o0 = el('option', '', '— Choisir une caractéristique —'); o0.value = ''; selC.appendChild(o0);
+    availCaracs.forEach(function(c) {
+      const o = el('option', '', c + ' (' + (rawCaracs[c] - (LVL_DRAFT.carac === c ? 1 : 0)) + ' -> ' + (rawCaracs[c] + (LVL_DRAFT.carac === c ? 0 : 1)) + ')');
+      o.value = c;
+      if (LVL_DRAFT.carac === c) o.selected = true;
+      selC.appendChild(o);
+    });
+    selC.onchange = function() { LVL_DRAFT.carac = selC.value; renderManageSheet(); };
+    cDiv.appendChild(selC);
+    row.appendChild(cDiv);
+  }
+
+  const acqForT1 = baseSt.talents.concat(LVL_DRAFT.t2 ? [LVL_DRAFT.t2] : []).concat(LVL_DRAFT.te ? [LVL_DRAFT.te] : []);
+  const eligT1 = RULES.talents.filter(function(t) { return t.type === 'commun' && isTalentEligible(t.nom, rawCaracs, acqForT1, nextLvl); });
+  if (LVL_DRAFT.t1 && !eligT1.some(function(t) { return t.nom === LVL_DRAFT.t1; })) LVL_DRAFT.t1 = '';
+
+  const t1Div = el('div', '');
+  t1Div.appendChild(el('div', '', 'Talent commun 1/2 :'));
+  const selT1 = el('select', ''); selT1.style.width = '100%';
+  const ot10 = el('option', '', '— Choisir le talent 1 —'); ot10.value = ''; selT1.appendChild(ot10);
+  eligT1.forEach(function(t) {
+    const o = el('option', '', t.nom + ' — ' + t.effet); o.value = t.nom;
+    if (LVL_DRAFT.t1 === t.nom) o.selected = true;
+    selT1.appendChild(o);
+  });
+  selT1.onchange = function() { LVL_DRAFT.t1 = selT1.value; renderManageSheet(); };
+  t1Div.appendChild(selT1);
+  row.appendChild(t1Div);
+
+  const acqForT2 = baseSt.talents.concat(LVL_DRAFT.t1 ? [LVL_DRAFT.t1] : []).concat(LVL_DRAFT.te ? [LVL_DRAFT.te] : []);
+  const eligT2 = RULES.talents.filter(function(t) { return t.type === 'commun' && isTalentEligible(t.nom, rawCaracs, acqForT2, nextLvl); });
+  if (LVL_DRAFT.t2 && !eligT2.some(function(t) { return t.nom === LVL_DRAFT.t2; })) LVL_DRAFT.t2 = '';
+const t2Div = el('div', '');
+t2Div.appendChild(el('div', '', 'Talent commun 2/2 :'));
+const selT2 = el('select', ''); selT2.style.width = '100%';
+const ot20 = el('option', '', '— Choisir le talent 2 —'); ot20.value = ''; selT2.appendChild(ot20);
+eligT2.forEach(function(t) {
+const o = el('option', '', t.nom + ' — ' + t.effet); o.value = t.nom;
+if (LVL_DRAFT.t2 === t.nom) o.selected = true;
+selT2.appendChild(o);
 });
-await sb.from('combat_state').update({ participants: parts }).eq('id', 1);
-}
-async function updateCombatParticipant(charId, field, value) {
-const parts = COMBAT.participants.map(function(p) {
-if (p.char_id !== charId) return p;
-const copy = Object.assign({}, p);
-copy[field] = value;
-return copy;
+selT2.onchange = function() { LVL_DRAFT.t2 = selT2.value; renderManageSheet(); };
+t2Div.appendChild(selT2);
+row.appendChild(t2Div);
+if (hasEpique) {
+const acqForTe = baseSt.talents.concat(LVL_DRAFT.t1 ? [LVL_DRAFT.t1] : []).concat(LVL_DRAFT.t2 ? [LVL_DRAFT.t2] : []);
+const eligTe = RULES.talents.filter(function(t) { return t.type === 'epique' && isTalentEligible(t.nom, rawCaracs, acqForTe, nextLvl); });
+if (LVL_DRAFT.te && !eligTe.some(function(t) { return t.nom === LVL_DRAFT.te; })) LVL_DRAFT.te = '';
+const teDiv = el('div', '');
+teDiv.appendChild(el('div', '', 'Talent Épique (Palier ' + nextLvl + ') :'));
+const selTe = el('select', ''); selTe.style.width = '100%';
+const ote0 = el('option', '', '— Choisir un talent épique —'); ote0.value = ''; selTe.appendChild(ote0);
+eligTe.forEach(function(t) {
+const o = el('option', '', t.nom + ' — ' + t.effet); o.value = t.nom;
+if (LVL_DRAFT.te === t.nom) o.selected = true;
+selTe.appendChild(o);
 });
-await sb.from('combat_state').update({ participants: parts }).eq('id', 1);
+selTe.onchange = function() { LVL_DRAFT.te = selTe.value; renderManageSheet(); };
+teDiv.appendChild(selTe);
+row.appendChild(teDiv);
 }
-async function removeFromCombat(charId) {
-const parts = COMBAT.participants.filter(function(p) { return p.char_id !== charId; });
-await sb.from('combat_state').update({ participants: parts }).eq('id', 1);
-}
-function computeCombatStats(char, p) {
-const st = getEffectiveState(char);
-const posObj = RULES.postures.find(function(x) { return x.nom === p.posture; }) || RULES.postures.at(0);
-const mList = COMBAT.status === 'phase2' ? RULES.manoeuvres_finales : RULES.manoeuvres_initiales;
-const manObj = mList.find(function(x) { return x.nom === p.manoeuvre; }) || { att: 0, def: 0 };
-const defaultFists = { nom: "Poings", categorie: "Arme", famille: "Lutte", mains: 1, poids: 0, force_min: 5, degat: 0, portee: 0 };
-const idxMain = st.worn['MainPrincipale'];
-const mainWeapon = (idxMain !== undefined && idxMain !== null && st.inv.at(idxMain)) ? st.inv.at(idxMain) : defaultFists;
-const idxSec = st.worn['MainSecondaire'];
-const secItem = (idxSec !== undefined && idxSec !== null) ? st.inv.at(idxSec) : null;
-const isRanged = ['Arcs', 'Arbalètes', 'Frondes', 'Armes de jet'].includes(mainWeapon.famille);
-const cov = getCoverTotals();
-let attCarac = (st.caracs['Force'] || 10) - 10;
-if (st.talents.includes('Finesse') && st.caracs['Force'] >= (mainWeapon.force_min || 5) + 1) {
-attCarac = Math.max(attCarac, (st.caracs['Agilité'] || 10) - 10);
-}
-let att = attCarac + (mainWeapon.degat || 0) + posObj.att + (manObj.att || 0) + st.emotionObj.att - st.fatigue - st.maxWoundMalus + (parseInt(p.temp_att) || 0);
-if (st.caracs['Force'] < (mainWeapon.force_min || 5)) {
-att -= ((mainWeapon.force_min || 5) - st.caracs['Force']);
-}
-if (secItem) {
-if (secItem.categorie === 'Arme') att += (secItem.degat || 0);
-if (!st.talents.includes('Ambidextrie')) att -= 2;
-}
-if (st.talents.includes('Entraînement aux armes')) att += 1;
-if (st.talents.includes('Balayage') && mainWeapon.mains === 2 && !isRanged) att += 2;
-if (st.talents.includes('Charge') && p.posture === 'Agressif') att += 1;
-if (st.talents.includes('Tirailleur') && p.posture === 'Repli' && isRanged) att += 1;
-if (st.talents.includes('Acuité') && isRanged) att += 1;
-if (st.talents.includes('Rage') && p.posture === 'Agressif' && !isRanged) att += 2;
-if (posObj.couv_att === 'malus') att += cov.malus;
-if (posObj.couv_att === 'bonus') att += cov.bonus * (st.talents.includes('Opportunisme') ? 2 : 1);
-att = Math.max(0, att);
-let def = ((st.caracs['Agilité'] || 10) - 10) + st.armorDef + posObj.def + (manObj.def || 0) + st.emotionObj.def - st.fatigue - st.maxWoundMalus + (parseInt(p.temp_def) || 0);
-if (!posObj.sans_portee) def += (mainWeapon.portee || 0);
-if (secItem && secItem.categorie === 'Bouclier') def += (secItem.def || 0);
-if (st.talents.includes('Esquive')) def += 1;
-if (st.talents.includes('Parade') && !isRanged && mainWeapon.nom !== 'Poings') def += 1;
-if (st.talents.includes('Rempart') && p.posture === 'Défensif') def += 1;
-if (st.talents.includes('Volée') && p.posture === 'Défensif' && ['Arcs', 'Arbalètes', 'Frondes'].includes(mainWeapon.famille)) def += 1;
-if (st.talents.includes('Tirailleur') && p.posture === 'Repli' && isRanged) def += 1;
-if (st.talents.includes('Acuité') && isRanged) def += 1;
-if (st.talents.includes('Ténacité') && p.posture === 'Défensif' && !isRanged) def += 2;
-if (posObj.couv_def === 'malus') def += cov.malus;
-if (posObj.couv_def === 'bonus') def += cov.bonus * (st.talents.includes('Opportunisme') ? 2 : 1);
-def = Math.max(0, def);
-return { att: att, def: def };
-}
-async function rollCombatCamp(camp) {
-const dieMax = COMBAT.combat_type === 'duel' ? 12 : 20;
-const roll = Math.floor(Math.random() * dieMax) + 1;
-const updateObj = camp === 'A' ? { roll_camp_a: roll } : { roll_camp_b: roll };
-const rollA = camp === 'A' ? roll : COMBAT.roll_camp_a;
-const rollB = camp === 'B' ? roll : COMBAT.roll_camp_b;
-if (rollA !== null && rollB !== null) {
-let attA = 0, defA = 0, attB = 0, defB = 0;
-COMBAT.participants.forEach(function(p) {
-const char = CHARACTERS.find(function(c) { return c.id === p.char_id; });
-if (!char) return;
-const stats = computeCombatStats(char, p);
-if (p.camp === 'A') { attA += stats.att; defA += stats.def; }
-else { attB += stats.att; defB += stats.def; }
+box.appendChild(row);
+const chosenTalents = [LVL_DRAFT.t1, LVL_DRAFT.t2, LVL_DRAFT.te].filter(Boolean);
+const spellSlots = getSpellSlotsForTalents(chosenTalents);
+if (spellSlots.length > 0) {
+const spWrap = el('div', 'border bg-purple-50 space-y-2');
+spWrap.appendChild(el('strong', '', 'Choix des nouveaux sorts débloqués :'));
+spellSlots.forEach(function(slotLabel, idx) {
+if (!LVL_DRAFT.spells[idx]) LVL_DRAFT.spells[idx] = { voie: 'Air', nom: 'Ascension' };
+const sRow = el('div', 'flex');
+sRow.appendChild(el('span', '', slotLabel + ' :'));
+const selV = el('select', '');
+(RULES.voies_magiques || []).forEach(function(v) {
+const o = el('option', '', v.voie); o.value = v.voie;
+if (LVL_DRAFT.spells[idx].voie === v.voie) o.selected = true;
+selV.appendChild(o);
 });
-const scoreA = Math.max(0, (attA + rollA) - defB);
-const scoreB = Math.max(0, (attB + rollB) - defA);
-const woundsToB = Math.floor(scoreA / 8);
-const woundsToA = Math.floor(scoreB / 8);
-const res = { attA: attA, defA: defA, rollA: rollA, scoreA: scoreA, woundsToB: woundsToB, attB: attB, defB: defB, rollB: rollB, scoreB: scoreB, woundsToA: woundsToA };
-if (COMBAT.status === 'phase1') updateObj.phase1_result = res;
-else updateObj.phase2_result = res;
-}
-await sb.from('combat_state').update(updateObj).eq('id', 1);
-}
-async function nextCombatPhase() {
-const parts = COMBAT.participants.map(function(p) {
-return Object.assign({}, p, { manoeuvre: 'Pas de manœuvre finale', temp_att: 0, temp_def: 0 });
+const selS = el('select', '');
+const vObj = (RULES.voies_magiques || []).find(function(x) { return x.voie === selV.value; });
+if (vObj) {
+if (!vObj.sorts.includes(LVL_DRAFT.spells[idx].nom)) LVL_DRAFT.spells[idx].nom = vObj.sorts.at(0);
+vObj.sorts.forEach(function(s) {
+const o = el('option', '', s); o.value = s;
+if (LVL_DRAFT.spells[idx].nom === s) o.selected = true;
+selS.appendChild(o);
 });
-await sb.from('combat_state').update({ status: 'phase2', participants: parts, roll_camp_a: null, roll_camp_b: null }).eq('id', 1);
 }
-function renderCombat() {
-const statusEl = document.getElementById('combat-status-banner');
-const resBox = document.getElementById('combat-results-box');
-if (!COMBAT || COMBAT.status === 'inactif') {
-statusEl.textContent = "Aucun combat en cours.";
-document.getElementById('combat-list-a').innerHTML = '';
-document.getElementById('combat-list-b').innerHTML = '';
-resBox.classList.add('hidden');
-return;
-}
-statusEl.textContent = 'Combat (' + COMBAT.combat_type.toUpperCase() + ') — ' + (COMBAT.status === 'phase1' ? 'PHASE INITIALE' : 'PHASE FINALE');
-document.getElementById('btn-roll-a').disabled = COMBAT.roll_camp_a !== null;
-document.getElementById('btn-roll-b').disabled = COMBAT.roll_camp_b !== null;
-['A', 'B'].forEach(function(camp) {
-const listEl = document.getElementById(camp === 'A' ? 'combat-list-a' : 'combat-list-b');
-listEl.innerHTML = '';
-const campParts = (COMBAT.participants || []).filter(function(p) { return p.camp === camp; });
-campParts.forEach(function(p) {
-const char = CHARACTERS.find(function(c) { return c.id === p.char_id; });
-if (!char) return;
-const isOwner = char.owner_id === CURRENT_USER.id;
-const visible = char.is_public || isOwner;
-const stats = computeCombatStats(char, p);
-const mList = COMBAT.status === 'phase2' ? RULES.manoeuvres_finales : RULES.manoeuvres_initiales;
-const card = el('div', 'border bg-stone-50 space-y-2');
-const top = el('div', 'flex justify-between');
-top.appendChild(el('strong', '', char.name + (visible ? ' (Att: ' + stats.att + ' | Déf: ' + stats.def + ')' : ' (Masqué)')));
-if (isOwner) {
-const bRem = el('button', '', 'Retirer'); bRem.style.color = '#dc2626'; bRem.style.fontSize = '11px';
-bRem.onclick = function() { removeFromCombat(char.id); };
-top.appendChild(bRem);
-}
-card.appendChild(top);
-if (isOwner) {
-const ctrl = el('div', 'flex');
-const selPos = el('select', '');
-RULES.postures.forEach(function(pos) {
-const o = el('option', '', pos.nom); o.value = pos.nom;
-if (p.posture === pos.nom) o.selected = true;
-selPos.appendChild(o);
+selV.onchange = function() { LVL_DRAFT.spells[idx] = { voie: selV.value, nom: '' }; renderManageSheet(); };
+selS.onchange = function() { LVL_DRAFT.spells[idx].nom = selS.value; };
+sRow.appendChild(selV); sRow.appendChild(selS);
+spWrap.appendChild(sRow);
 });
-selPos.onchange = function() { updateCombatParticipant(char.id, 'posture', selPos.value); };
-const selMan = el('select', '');
-mList.forEach(function(m) {
-const o = el('option', '', m.nom); o.value = m.nom;
-if (p.manoeuvre === m.nom) o.selected = true;
-selMan.appendChild(o);
-});
-selMan.onchange = function() { updateCombatParticipant(char.id, 'manoeuvre', selMan.value); };
-const inpAtt = el('input', ''); inpAtt.type = 'number'; inpAtt.value = p.temp_att || 0; inpAtt.style.width = '50px';
-inpAtt.onchange = function() { updateCombatParticipant(char.id, 'temp_att', inpAtt.value); };
-const inpDef = el('input', ''); inpDef.type = 'number'; inpDef.value = p.temp_def || 0; inpDef.style.width = '50px';
-inpDef.onchange = function() { updateCombatParticipant(char.id, 'temp_def', inpDef.value); };
-ctrl.appendChild(selPos); ctrl.appendChild(selMan); ctrl.appendChild(inpAtt); ctrl.appendChild(inpDef);
-card.appendChild(ctrl);
+box.appendChild(spWrap);
 } else {
-card.appendChild(el('div', '', 'Posture : ' + p.posture + (visible ? ' | Manœuvre : ' + p.manoeuvre : '')));
+LVL_DRAFT.spells = [];
 }
-listEl.appendChild(card);
-});
-});
-const res = COMBAT.status === 'phase2' && COMBAT.phase2_result ? COMBAT.phase2_result : COMBAT.phase1_result;
-if (res) {
-resBox.classList.remove('hidden');
-resBox.innerHTML = '';
-const isInitial = COMBAT.status === 'phase1' && !COMBAT.phase2_result;
-const winner = res.scoreA > res.scoreB ? 'Camp A' : (res.scoreB > res.scoreA ? 'Camp B' : 'Égalité');
-const box = el('div', 'border bg-amber-50 space-y-2');
-box.appendChild(el('strong', '', 'Résultat ' + (isInitial ? 'Phase Initiale' : 'Phase Finale') + ' :'));
-box.appendChild(el('div', '', 'Camp A : Attaque ' + res.attA + ' + Dé (' + res.rollA + ') - Déf B (' + res.defB + ') = Score ' + res.scoreA + ' -> ' + res.woundsToB + ' blessure(s) infligée(s) au Camp B'));
-box.appendChild(el('div', '', 'Camp B : Attaque ' + res.attB + ' + Dé (' + res.rollB + ') - Déf A (' + res.defA + ') = Score ' + res.scoreB + ' -> ' + res.woundsToA + ' blessure(s) infligée(s) au Camp A'));
-box.appendChild(el('div', '', isInitial ? 'Tour initial : chaque camp répartit les blessures qu’il inflige à l’adversaire.' : 'Tour final : chaque camp répartit entre ses membres les blessures qu’il subit.'));
-if (!isInitial || COMBAT.combat_type === 'escarmouche') {
-box.appendChild(el('strong', '', 'Vainqueur : ' + winner + ' (Score de Victoire : ' + Math.abs(res.scoreA - res.scoreB) + ')'));
+const btnVal = el('button', 'bg-amber-800', 'Valider le passage au Niveau ' + nextLvl);
+btnVal.style.width = '100%';
+btnVal.onclick = function() { confirmLevelUp(char.id, nextLvl, hasCaracChoice, hasEpique, spellSlots.length); };
+box.appendChild(btnVal);
+container.appendChild(box);
 }
-resBox.appendChild(box);
-} else {
-resBox.classList.add('hidden');
+function renderCareerHistory(char, container) {
+const histBox = el('div', 'border space-y-2');
+histBox.appendChild(el('strong', '', 'Plan de carrière (du plus récent au niveau 1) :'));
+const d = char.data;
+for (let lvl = char.level; lvl >= 2; lvl--) {
+const row = el('div', 'border bg-stone-50');
+row.style.fontSize = '12px';
+const cGain = (d.level_caracs || {})[lvl];
+const tGains = (d.level_talents || {})[lvl] || [];
+const sGains = (d.level_sorts || {})[lvl] || [];
+let txt = 'Niveau ' + lvl + ' : ';
+if (cGain) txt += '[+1 ' + cGain + '] ';
+txt += 'Talents : ' + (tGains.join(', ') || '—');
+if (sGains.length > 0) txt += ' | Sorts : ' + sGains.map(function(s) { return s.nom + ' (' + s.voie + ')'; }).join(', ');
+row.textContent = txt;
+histBox.appendChild(row);
 }
+const lvl1Row = el('div', 'border bg-stone-50');
+lvl1Row.style.fontSize = '12px';
+lvl1Row.textContent = 'Niveau 1 (Création) : ' + d.peuple + ' (+1 ' + d.peuple_carac + '), ' + d.culture + ' (+1 ' + d.culture_carac + '), ' + d.classe + ' | Talents : ' + (d.talents_lvl1 || []).join(', ');
+histBox.appendChild(lvl1Row);
+container.appendChild(histBox);
 }
-init();
+

@@ -241,7 +241,8 @@ function getEffectiveState(char) {
   let armorMalusAgi = Math.floor(rawArmorMalusAgi);
   if (talents.includes('Entraînement aux armures légères')) armorMalusAgi = Math.max(0, armorMalusAgi - 2);
   if (talents.includes('Entraînement aux armures lourdes')) armorMalusAgi = Math.max(0, armorMalusAgi - 2);
-
+  caracs['Agilité'] = (caracs['Agilité'] || 8) - armorMalusAgi;
+  
   let maxWeight = caracs['Force'] * 2;
   if (talents.includes('Transport')) maxWeight += 8;
   if (talents.includes('Chargement')) maxWeight += 8;
@@ -397,10 +398,7 @@ function computeSkillModifier(char, st, comp) {
     total -= st.maxWoundMalus;
     parts.push('Blessure -' + st.maxWoundMalus);
   }
-  if (comp.carac === 'Agilité' && st.armorMalusAgi > 0) {
-    total -= st.armorMalusAgi;
-    parts.push('Armure -' + st.armorMalusAgi);
-  }
+
 
   const cov = getCoverTotals();
   if (comp.couverture === 'malus' && cov.malus !== 0) {
@@ -1197,31 +1195,61 @@ async function removeFromCombat(charId) {
 
 function computeCombatStats(char, p) {
   const st = getEffectiveState(char);
-  const posObj = RULES.postures.find(function(x) { return x.nom === p.posture; }) || RULES.postures[0];
+  const posObj = RULES.postures.find(function(x) { return x.nom === p.posture; }) || RULES.postures.at(0);
   const mList = COMBAT.status === 'phase2' ? RULES.manoeuvres_finales : RULES.manoeuvres_initiales;
   const manObj = mList.find(function(x) { return x.nom === p.manoeuvre; }) || { att: 0, def: 0 };
-  const mainWeapon = st.inv[st.worn['MainPrincipale']] || { degat: 0, portee: 0, mains: 1, force_min: 5 };
-  const secItem = st.inv[st.worn['MainSecondaire']];
+
+  const defaultFists = { nom: "Poings", categorie: "Arme", famille: "Lutte", mains: 1, poids: 0, force_min: 5, degat: 0, portee: 0 };
+  const idxMain = st.worn['MainPrincipale'];
+  const mainWeapon = (idxMain !== undefined && idxMain !== null && st.inv.at(idxMain)) ? st.inv.at(idxMain) : defaultFists;
+  const idxSec = st.worn['MainSecondaire'];
+  const secItem = (idxSec !== undefined && idxSec !== null) ? st.inv.at(idxSec) : null;
+
+  const isRanged = ['Arcs', 'Arbalètes', 'Frondes', 'Armes de jet'].includes(mainWeapon.famille);
+  const cov = getCoverTotals();
 
   let attCarac = (st.caracs['Force'] || 10) - 10;
   if (st.talents.includes('Finesse') && st.caracs['Force'] >= (mainWeapon.force_min || 5) + 1) {
     attCarac = Math.max(attCarac, (st.caracs['Agilité'] || 10) - 10);
   }
   let att = attCarac + (mainWeapon.degat || 0) + posObj.att + (manObj.att || 0) + st.emotionObj.att - st.fatigue - st.maxWoundMalus + (parseInt(p.temp_att) || 0);
+
+  if (st.caracs['Force'] < (mainWeapon.force_min || 5)) {
+    att -= ((mainWeapon.force_min || 5) - st.caracs['Force']);
+  }
   if (secItem) {
     if (secItem.categorie === 'Arme') att += (secItem.degat || 0);
     if (!st.talents.includes('Ambidextrie')) att -= 2;
   }
+  if (st.talents.includes('Entraînement aux armes')) att += 1;
+  if (st.talents.includes('Balayage') && mainWeapon.mains === 2 && !isRanged) att += 2;
+  if (st.talents.includes('Charge') && p.posture === 'Agressif') att += 1;
+  if (st.talents.includes('Tirailleur') && p.posture === 'Repli' && isRanged) att += 1;
+  if (st.talents.includes('Acuité') && isRanged) att += 1;
+  if (st.talents.includes('Rage') && p.posture === 'Agressif' && !isRanged) att += 2;
+
+  if (posObj.couv_att === 'malus') att += cov.malus;
+  if (posObj.couv_att === 'bonus') att += cov.bonus * (st.talents.includes('Opportunisme') ? 2 : 1);
   att = Math.max(0, att);
 
-  let def = ((st.caracs['Agilité'] || 10) - 10) - st.armorMalusAgi + st.armorDef + posObj.def + (manObj.def || 0) + st.emotionObj.def - st.fatigue - st.maxWoundMalus + (parseInt(p.temp_def) || 0);
+  let def = ((st.caracs['Agilité'] || 10) - 10) + st.armorDef + posObj.def + (manObj.def || 0) + st.emotionObj.def - st.fatigue - st.maxWoundMalus + (parseInt(p.temp_def) || 0);
   if (!posObj.sans_portee) def += (mainWeapon.portee || 0);
   if (secItem && secItem.categorie === 'Bouclier') def += (secItem.def || 0);
   if (st.talents.includes('Esquive')) def += 1;
+  if (st.talents.includes('Parade') && !isRanged && mainWeapon.nom !== 'Poings') def += 1;
+  if (st.talents.includes('Rempart') && p.posture === 'Défensif') def += 1;
+  if (st.talents.includes('Volée') && p.posture === 'Défensif' && ['Arcs', 'Arbalètes', 'Frondes'].includes(mainWeapon.famille)) def += 1;
+  if (st.talents.includes('Tirailleur') && p.posture === 'Repli' && isRanged) def += 1;
+  if (st.talents.includes('Acuité') && isRanged) def += 1;
+  if (st.talents.includes('Ténacité') && p.posture === 'Défensif' && !isRanged) def += 2;
+
+  if (posObj.couv_def === 'malus') def += cov.malus;
+  if (posObj.couv_def === 'bonus') def += cov.bonus * (st.talents.includes('Opportunisme') ? 2 : 1);
   def = Math.max(0, def);
 
   return { att: att, def: def };
 }
+
 
 async function rollCombatCamp(camp) {
   const dieMax = COMBAT.combat_type === 'duel' ? 12 : 20;

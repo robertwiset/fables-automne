@@ -1,12 +1,48 @@
 const SUPABASE_URL = "https://tmfzrjeaknwvkdhsqmuu.supabase.co";
 const SUPABASE_KEY = "sb_publishable_Zx28ISJOTOmc-Hkmdpj-iQ_dP6kHgCC";
 let AUTH_TOKEN = localStorage.getItem('fa_token') || null;
+let REFRESH_TOKEN = localStorage.getItem('fa_refresh') || null;
 let AUTH_USER = JSON.parse(localStorage.getItem('fa_user') || 'null');
 
 function apiHeaders() {
   const h = { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' };
   if (AUTH_TOKEN) h['Authorization'] = 'Bearer ' + AUTH_TOKEN;
   return h;
+}
+
+async function tryRefreshSession() {
+  if (!REFRESH_TOKEN) return false;
+  const r = await fetch(SUPABASE_URL + '/auth/v1/token?grant_type=refresh_token', {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: REFRESH_TOKEN })
+  });
+  if (!r.ok) return false;
+  const d = await r.json();
+  AUTH_TOKEN = d.access_token;
+  REFRESH_TOKEN = d.refresh_token;
+  AUTH_USER = d.user;
+  localStorage.setItem('fa_token', AUTH_TOKEN);
+  localStorage.setItem('fa_refresh', REFRESH_TOKEN);
+  localStorage.setItem('fa_user', JSON.stringify(AUTH_USER));
+  return true;
+}
+
+async function sbFetch(url, options) {
+  let r = await fetch(url, options);
+  if (r.status === 401) {
+    const refreshed = await tryRefreshSession();
+    if (refreshed) {
+      const newOpts = Object.assign({}, options, { headers: Object.assign({}, options.headers, { 'Authorization': 'Bearer ' + AUTH_TOKEN }) });
+      r = await fetch(url, newOpts);
+    } else {
+      localStorage.removeItem('fa_token');
+      localStorage.removeItem('fa_refresh');
+      localStorage.removeItem('fa_user');
+      location.reload();
+    }
+  }
+  return r;
 }
 
 const sb = {
@@ -18,20 +54,20 @@ const sb = {
       const r = await fetch(SUPABASE_URL + '/auth/v1/token?grant_type=password', { method: 'POST', headers: apiHeaders(), body: JSON.stringify(creds) });
       const d = await r.json();
       if (!r.ok) return { error: { message: d.error_description || d.msg || 'Identifiants incorrects' } };
-      AUTH_TOKEN = d.access_token; AUTH_USER = d.user;
-      localStorage.setItem('fa_token', AUTH_TOKEN); localStorage.setItem('fa_user', JSON.stringify(AUTH_USER));
+      AUTH_TOKEN = d.access_token; REFRESH_TOKEN = d.refresh_token; AUTH_USER = d.user;
+      localStorage.setItem('fa_token', AUTH_TOKEN); localStorage.setItem('fa_refresh', REFRESH_TOKEN); localStorage.setItem('fa_user', JSON.stringify(AUTH_USER));
       return { data: { user: d.user } };
     },
     signUp: async function(creds) {
       const r = await fetch(SUPABASE_URL + '/auth/v1/signup', { method: 'POST', headers: apiHeaders(), body: JSON.stringify(creds) });
       const d = await r.json();
       if (!r.ok) return { error: { message: d.msg || d.error_description || 'Erreur création compte' } };
-      AUTH_TOKEN = d.access_token; AUTH_USER = d.user;
-      if (AUTH_TOKEN) { localStorage.setItem('fa_token', AUTH_TOKEN); localStorage.setItem('fa_user', JSON.stringify(AUTH_USER)); }
+      AUTH_TOKEN = d.access_token; REFRESH_TOKEN = d.refresh_token; AUTH_USER = d.user;
+      if (AUTH_TOKEN) { localStorage.setItem('fa_token', AUTH_TOKEN); localStorage.setItem('fa_refresh', REFRESH_TOKEN); localStorage.setItem('fa_user', JSON.stringify(AUTH_USER)); }
       return { data: { user: d.user } };
     },
     signOut: async function() {
-      localStorage.removeItem('fa_token'); localStorage.removeItem('fa_user');
+      localStorage.removeItem('fa_token'); localStorage.removeItem('fa_refresh'); localStorage.removeItem('fa_user');
     }
   },
   from: function(table) {
@@ -46,20 +82,20 @@ const sb = {
       then: async function(resolve) {
         const h = apiHeaders();
         if (isSingle) h['Accept'] = 'application/vnd.pgrst.object+json';
-        const r = await fetch(url, { headers: h });
+        const r = await sbFetch(url, { headers: h });
         const d = await r.json().catch(function() { return null; });
         resolve(r.ok ? { data: d } : { error: d });
       },
       insert: async function(payload) {
-        const r = await fetch(SUPABASE_URL + '/rest/v1/' + table, { method: 'POST', headers: Object.assign({}, apiHeaders(), { 'Prefer': 'return=representation' }), body: JSON.stringify(payload) });
+        const r = await sbFetch(SUPABASE_URL + '/rest/v1/' + table, { method: 'POST', headers: Object.assign({}, apiHeaders(), { 'Prefer': 'return=representation' }), body: JSON.stringify(payload) });
         const d = await r.json().catch(function() { return null; });
         return r.ok ? { data: d } : { error: { message: (d && d.message) || 'Erreur insertion' } };
       },
       update: function(payload) {
         return {
           eq: async function(col, val) {
-            const r = await fetch(SUPABASE_URL + '/rest/v1/' + table + '?' + col + '=eq.' + encodeURIComponent(val), { method: 'PATCH', headers: apiHeaders(), body: JSON.stringify(payload) });
-            if (r.ok && typeof refreshAllData === 'function') setTimeout(refreshAllData, 200);
+            const r = await sbFetch(SUPABASE_URL + '/rest/v1/' + table + '?' + col + '=eq.' + encodeURIComponent(val), { method: 'PATCH', headers: apiHeaders(), body: JSON.stringify(payload) });
+            if (r.ok && typeof refreshAllData === 'function') setTimeout(function() { refreshAllData(true); }, 200);
             return r.ok ? { data: true } : { error: { message: 'Erreur mise à jour' } };
           }
         };
@@ -67,8 +103,8 @@ const sb = {
       delete: function() {
         return {
           eq: async function(col, val) {
-            const r = await fetch(SUPABASE_URL + '/rest/v1/' + table + '?' + col + '=eq.' + encodeURIComponent(val), { method: 'DELETE', headers: apiHeaders() });
-            if (r.ok && typeof refreshAllData === 'function') setTimeout(refreshAllData, 200);
+            const r = await sbFetch(SUPABASE_URL + '/rest/v1/' + table + '?' + col + '=eq.' + encodeURIComponent(val), { method: 'DELETE', headers: apiHeaders() });
+            if (r.ok && typeof refreshAllData === 'function') setTimeout(function() { refreshAllData(true); }, 200);
             return r.ok ? { data: true } : { error: { message: 'Erreur suppression' } };
           }
         };
@@ -81,6 +117,7 @@ const sb = {
     return { on: function() { return this; }, subscribe: function() {} };
   }
 };
+
 
 
 let RULES = null, CURRENT_USER = null, CHARACTERS = [], SCENE = null, COMBAT = null, ROLLS = [];

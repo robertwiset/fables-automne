@@ -74,7 +74,6 @@
 
     <div class="layout-split">
       <div>
-        <!-- ONGLET 1 : FEUILLE DE PERSONNAGE (EN JEU) -->
         <section id="tab-play" class="space-y-4">
           <div class="card">
             <div class="flex justify-between">
@@ -92,7 +91,6 @@
             </div>
           </div>
 
-          <!-- BLOC REPLIABLE : TESTS (6 COLONNES PAR CARACTERISTIQUE) -->
           <div class="card">
             <div class="collapsible-header" onclick="toggleFold('fold-tests')">
               <h3 style="margin:0;">Tests de Caractéristiques &amp; Compétences</h3>
@@ -104,7 +102,6 @@
             </div>
           </div>
 
-          <!-- BLOC REPLIABLE : SANTE & REPOS -->
           <div class="card">
             <div class="collapsible-header" onclick="toggleFold('fold-health')">
               <h3 style="margin:0;">Santé, États, Blessures &amp; Repos</h3>
@@ -115,7 +112,6 @@
             </div>
           </div>
 
-          <!-- BLOC REPLIABLE : MAGIE, RITUELS & SORTS -->
           <div class="card">
             <div class="collapsible-header" onclick="toggleFold('fold-magic')">
               <h3 style="margin:0;">Magie, Rituels &amp; Sorts</h3>
@@ -126,8 +122,6 @@
             </div>
           </div>
         </section>
-
-        <!-- ONGLET 2 : SCENE & COMBAT -->
         <section id="tab-combat" class="hidden space-y-4">
           <div class="card space-y-3">
             <h3 style="margin:0;">Conditions générales de la scène (Partagées)</h3>
@@ -162,3 +156,55 @@
             <div class="flex" style="font-size:12px; border-top:1px solid #e7e5e4; padding-top:8px;">
               <span>Ajouter mon personnage :</span>
               <select id="combat-add-char"></select>
+              <button onclick="addToCombat('A')" class="bg-emerald-700">+ Camp A</button>
+              <button onclick="addToCombat('B')" class="bg-rose-700">+ Camp B</button>
+            </div>
+
+            <div id="combat-results-box" class="hidden"></div>
+
+            <div class="grid grid-cols-2">
+              <div class="border space-y-2">
+                <div class="flex justify-between">
+                  <strong style="color:#065f46;">Camp A</strong>
+                  <button id="btn-roll-a" onclick="rollCombatCamp('A')" class="bg-emerald-700" style="font-size:12px;">Lancer dé Camp A</button>
+                </div>
+                <div id="combat-list-a" class="space-y-2"></div>
+              </div>
+              <div class="border space-y-2">
+                <div class="flex justify-between">
+                  <strong style="color:#9f1239;">Camp B</strong>
+                  <button id="btn-roll-b" onclick="rollCombatCamp('B')" class="bg-rose-700" style="font-size:12px;">Lancer dé Camp B</button>
+                </div>
+                <div id="combat-list-b" class="space-y-2"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="tab-manage" class="hidden space-y-4">
+          <div class="card space-y-3">
+            <div class="flex justify-between">
+              <h3 style="margin:0;">Gestion des personnages (Niveaux, Équipement, Droits)</h3>
+              <div class="flex">
+                <select id="sheet-char-select" onchange="renderManageSheet()"></select>
+                <button onclick="toggleCreateForm()" class="bg-amber-800">+ Nouveau personnage</button>
+              </div>
+            </div>
+            <div id="create-form-wrapper" class="hidden border bg-amber-50 space-y-3">
+              <div id="create-form-mount" class="space-y-3"></div>
+            </div>
+            <div id="manage-sheet-container" class="space-y-4"></div>
+          </div>
+        </section>
+      </div>
+
+      <aside class="card space-y-2">
+        <h3 style="margin:0;">Historique des tests</h3>
+        <div id="roll-history-list" class="space-y-2" style="max-height:700px; overflow-y:auto; font-size:12px;"></div>
+      </aside>
+    </div>
+  </div>
+
+  <script defer src="app.js"></script>
+</body>
+</html>

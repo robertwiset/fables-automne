@@ -1042,10 +1042,13 @@ async function setEffectiveLevel(charId, lvl) {
 
 async function changeFatigue(charId, delta) {
   const char = CHARACTERS.find(function(c) { return c.id === charId; });
+  const st = getEffectiveState(char);
+  const maxFat = st.caracs['Santé'] || 10;
   const infectedCount = Object.values(char.data.blessures || {}).filter(function(b) { return b && b.infectee; }).length;
-  const newFat = Math.max(infectedCount, (char.data.fatigue || 0) + delta);
+  const newFat = Math.min(maxFat, Math.max(infectedCount, (char.data.fatigue || 0) + delta));
   await updateCharField(charId, 'fatigue', newFat);
 }
+
 
 async function addEquipment(charId) {
   const char = CHARACTERS.find(function(c) { return c.id === charId; });

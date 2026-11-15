@@ -302,7 +302,7 @@ function getEffectiveState(char) {
   const emotionObj = RULES.emotions.find(function(e) { return e.nom === (d.emotion || 'Aucune'); }) || { comp: 0, att: 0, def: 0 };
   const fatigue = d.fatigue || 0;
 
-  return { caracs: caracs, talents: talents, sorts: sorts, normTalents: normTalents, maxWoundMalus: maxWoundMalus, limbDisabled: limbDisabled, totalWeight: totalWeight, maxWeight: maxWeight, encumbered: encumbered, armorDef: armorDef, armorMalusAgi: armorMalusAgi, emotionObj: emotionObj, fatigue: fatigue, worn: worn, equipped: equipped, inv: inv, blessures: blessures };
+  return { caracs: caracs, talents: talents, sorts: sorts, normTalents: normTalents, maxWoundMalus: maxWoundMalus, limbDisabled: limbDisabled, totalWeight: totalWeight, maxWeight: maxWeight, encumbered: encumbered, armorDef: armorDef, armorMalusAgi: armorMalusAgi, emotionObj: emotionObj, fatigue: fatigue, worn: worn, equipped: equipped, inv: inv, blessures: blessures, talentChoices: talentChoices };
 }
 function getCoverTotals() {
   const t = RULES.couverture.terrain.find(function(x) { return x.nom === SCENE.cover_terrain; }) || { malus: 0, bonus: 0 };
@@ -567,12 +567,13 @@ function computeSkillModifier(char, st, comp) {
     }
   });
 
-  if (st.talents.includes('Adaptation') && char.data.adaptation_milieu === SCENE.environment) {
-    if (['Déplacement', 'Détection', 'Discrétion', 'Equilibre', 'Chasse', 'Orientation'].includes(comp.nom)) {
-      total += 1;
-      parts.push('Adaptation +1');
-    }
+const adaptMilieux = (st.talentChoices && st.talentChoices['Adaptation']) ? st.talentChoices['Adaptation'] : [];
+if (st.talents.includes('Adaptation') && adaptMilieux.includes(SCENE.environment)) {
+  if (['Déplacement', 'Détection', 'Discrétion', 'Equilibre', 'Chasse', 'Orientation'].includes(comp.nom)) {
+    total += 1;
+    parts.push('Adaptation (' + SCENE.environment + ') +1');
   }
+}
 
   if (comp.nom !== 'Résistance' && st.fatigue > 0) {
     total -= st.fatigue;
@@ -1324,7 +1325,7 @@ function renderLevelUpBox(char, container) {
   if (hasCaracChoice && !availCaracs.includes(LVL_DRAFT.carac)) LVL_DRAFT.carac = '';
   if (hasCaracChoice && LVL_DRAFT.carac) rawCaracs[LVL_DRAFT.carac] += 1;
 
-  const hasEpique =.includes(nextLvl);
+  const hasEpique = [15, 18, 21, 24, 27, 30].includes(nextLvl);
 
   const buildChoicesMap = function(excludeSlot) {
     const map = {};

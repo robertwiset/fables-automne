@@ -825,3 +825,31 @@ const infectedCount = Object.values(char.data.blessures || {}).filter(b => b && 
 const newFat = Math.max(infectedCount, (char.data.fatigue || 0) + delta);
 await updateCharField(charId, 'fatigue', newFat);
 }
+async function addEquipment(charId) {
+  const char = CHARACTERS.find(c => c.id === charId);
+  const idx = parseInt(document.getElementById('add-equip-sel').value);
+  const item = { ..const mList = COMBAT.status === 'phase2' ? RULES.manoeuvres_finales : RULES.manoeuvres_initiales;
+return <div class="p-2 border rounded bg-gray-50 text-sm space-y-1"> <div class="flex justify-between font-bold"> <span>${char.name} ${visible ? (Att: ${stats.att} | Déf: ${stats.def}): '(Masqué)'}</span> ${isOwner ?Retirer: ''} </div> ${isOwner ?
+
+${RULES.postures.map(pos => <option value="${pos.nom}" ${p.posture === pos.nom ? 'selected' : ''}>${pos.nom}</option>).join('')}
+
+
+${mList.map(m => <option value="${m.nom}" ${p.manoeuvre === m.nom ? 'selected' : ''}>${m.nom}</option>).join('')}
+
+
+
+:Posture : ${p.posture} ${visible ? | Manœuvre : ${p.manoeuvre} : ''}} </div>;
+}).join('');
+});
+const resBox = document.getElementById('combat-results-box');
+const res = COMBAT.status === 'phase2' && COMBAT.phase2_result ? COMBAT.phase2_result : COMBAT.phase1_result;
+if (res) {
+resBox.classList.remove('hidden');
+const isInitial = COMBAT.status === 'phase1' && !COMBAT.phase2_result;
+const winner = res.scoreA > res.scoreB ? 'Camp A' : (res.scoreB > res.scoreA ? 'Camp B' : 'Égalité');
+resBox.innerHTML = <div class="p-3 bg-amber-50 border border-amber-300 rounded text-sm space-y-1"> <div class="font-bold">Résultat ${isInitial ? 'Phase Initiale' : 'Phase Finale'} :</div> <div>Camp A : Attaque ${res.attA} + Dé (${res.rollA}) - Déf B (${res.defB}) = <strong>Score ${res.scoreA}</strong> → <strong>${res.woundsToB} blessure(s)</strong> infligée(s) au Camp B</div> <div>Camp B : Attaque ${res.attB} + Dé (${res.rollB}) - Déf A (${res.defA}) = <strong>Score ${res.scoreB}</strong> → <strong>${res.woundsToA} blessure(s)</strong> infligée(s) au Camp A</div> <div class="text-xs text-gray-700 italic">${isInitial ? 'Tour initial : chaque camp répartit les blessures qu’il inflige à l’adversaire.' : 'Tour final : chaque camp répartit entre ses membres les blessures qu’il subit.'}</div> ${(!isInitial || COMBAT.combat_type === 'escarmouche') ? Vainqueur : ${winner} (Score de Victoire : ${Math.abs(res.scoreA - res.scoreB)}) : ''} </div>;
+} else {
+resBox.classList.add('hidden');
+}
+}
+init();

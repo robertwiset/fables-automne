@@ -1,6 +1,87 @@
-const SUPABASE_URL = "https://tmfzrjeaknwvkdhsqmuu.supabase.co";
+const SUPABASE_URL = "https://" + "tmfzrjeaknwvkdhsqmuu" + ".supabase.co";
 const SUPABASE_KEY = "sb_publishable_Zx28ISJOTOmc-Hkmdpj-iQ_dP6kHgCC";
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let AUTH_TOKEN = localStorage.getItem('fa_token') || null;
+let AUTH_USER = JSON.parse(localStorage.getItem('fa_user') || 'null');
+
+function apiHeaders() {
+  const h = { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' };
+  if (AUTH_TOKEN) h['Authorization'] = 'Bearer ' + AUTH_TOKEN;
+  return h;
+}
+
+const sb = {
+  auth: {
+    getSession: async function() {
+      return { data: { session: AUTH_USER ? { user: AUTH_USER } : null } };
+    },
+    signInWithPassword: async function(creds) {
+      const r = await fetch(SUPABASE_URL + '/auth/v1/token?grant_type=password', { method: 'POST', headers: apiHeaders(), body: JSON.stringify(creds) });
+      const d = await r.json();
+      if (!r.ok) return { error: { message: d.error_description || d.msg || 'Identifiants incorrects' } };
+      AUTH_TOKEN = d.access_token; AUTH_USER = d.user;
+      localStorage.setItem('fa_token', AUTH_TOKEN); localStorage.setItem('fa_user', JSON.stringify(AUTH_USER));
+      return { data: { user: d.user } };
+    },
+    signUp: async function(creds) {
+      const r = await fetch(SUPABASE_URL + '/auth/v1/signup', { method: 'POST', headers: apiHeaders(), body: JSON.stringify(creds) });
+      const d = await r.json();
+      if (!r.ok) return { error: { message: d.msg || d.error_description || 'Erreur création compte' } };
+      AUTH_TOKEN = d.access_token; AUTH_USER = d.user;
+      if (AUTH_TOKEN) { localStorage.setItem('fa_token', AUTH_TOKEN); localStorage.setItem('fa_user', JSON.stringify(AUTH_USER)); }
+      return { data: { user: d.user } };
+    },
+    signOut: async function() {
+      localStorage.removeItem('fa_token'); localStorage.removeItem('fa_user');
+    }
+  },
+  from: function(table) {
+    let url = SUPABASE_URL + '/rest/v1/' + table + '?select=*';
+    let isSingle = false;
+    const q = {
+      select: function() { return q; },
+      eq: function(col, val) { url += '&' + col + '=eq.' + encodeURIComponent(val); return q; },
+      order: function(col, opts) { url += '&order=' + col + '.' + (opts && opts.ascending === false ? 'desc' : 'asc'); return q; },
+      limit: function(n) { url += '&limit=' + n; return q; },
+      single: function() { isSingle = true; return q; },
+      then: async function(resolve) {
+        const h = apiHeaders();
+        if (isSingle) h['Accept'] = 'application/vnd.pgrst.object+json';
+        const r = await fetch(url, { headers: h });
+        const d = await r.json().catch(function() { return null; });
+        resolve(r.ok ? { data: d } : { error: d });
+      },
+      insert: async function(payload) {
+        const r = await fetch(SUPABASE_URL + '/rest/v1/' + table, { method: 'POST', headers: Object.assign({}, apiHeaders(), { 'Prefer': 'return=representation' }), body: JSON.stringify(payload) });
+        const d = await r.json().catch(function() { return null; });
+        return r.ok ? { data: d } : { error: { message: (d && d.message) || 'Erreur insertion' } };
+      },
+      update: function(payload) {
+        return {
+          eq: async function(col, val) {
+            const r = await fetch(SUPABASE_URL + '/rest/v1/' + table + '?' + col + '=eq.' + encodeURIComponent(val), { method: 'PATCH', headers: apiHeaders(), body: JSON.stringify(payload) });
+            if (r.ok && typeof refreshAllData === 'function') setTimeout(refreshAllData, 200);
+            return r.ok ? { data: true } : { error: { message: 'Erreur mise à jour' } };
+          }
+        };
+      },
+      delete: function() {
+        return {
+          eq: async function(col, val) {
+            const r = await fetch(SUPABASE_URL + '/rest/v1/' + table + '?' + col + '=eq.' + encodeURIComponent(val), { method: 'DELETE', headers: apiHeaders() });
+            if (r.ok && typeof refreshAllData === 'function') setTimeout(refreshAllData, 200);
+            return r.ok ? { data: true } : { error: { message: 'Erreur suppression' } };
+          }
+        };
+      }
+    };
+    return q;
+  },
+  channel: function() {
+    setInterval(function() { if (typeof refreshAllData === 'function' && CURRENT_USER) refreshAllData(); }, 4000);
+    return { on: function() { return this; }, subscribe: function() {} };
+  }
+};
+
 
 let RULES = null, CURRENT_USER = null, CHARACTERS = [], SCENE = null, COMBAT = null, ROLLS = [];
 let CREATE_CARACS = { Force: 8, Agilité: 8, Santé: 8, Connaissance: 8, Perception: 8, Présence: 8 };

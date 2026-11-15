@@ -1312,7 +1312,7 @@ let LVL_DRAFT = { charId: null, carac: '', t1: '', t1Choice: '', t2: '', t2Choic
 function renderLevelUpBox(char, container) {
   const nextLvl = char.level + 1;
   if (LVL_DRAFT.charId !== char.id) {
-    LVL_DRAFT = { charId: char.id, carac: '', t1: '', t1Choice: '', t2: '', t2Choice: '', te: '', teChoice: '', spells: [] };
+    LVL_DRAFT = { charId: char.id, carac: '', t1: '', t1Choice: '', t2: '', t2Choice: '', te: '', teChoice: '', spells: new Array() };
   }
 
   const fullChar = Object.assign({}, char, { effective_level: char.level });
@@ -1327,14 +1327,14 @@ function renderLevelUpBox(char, container) {
   if (hasCaracChoice && !availCaracs.includes(LVL_DRAFT.carac)) LVL_DRAFT.carac = '';
   if (hasCaracChoice && LVL_DRAFT.carac) rawCaracs[LVL_DRAFT.carac] += 1;
 
-  const hasEpique = [15, 18, 21, 24, 27, 30].includes(nextLvl);
+  const hasEpique = new Array(15, 18, 21, 24, 27, 30).includes(nextLvl);
 
   const buildChoicesMap = function(excludeSlot) {
     const map = {};
     Object.keys(baseChoicesMap).forEach(function(k) { map[k] = baseChoicesMap[k].slice(); });
     const add = function(t, ch) {
       if (!t || !ch) return;
-      if (!map[t]) map[t] = [];
+      if (!map[t]) map[t] = new Array();
       map[t].push(ch);
     };
     if (excludeSlot !== 't1') add(LVL_DRAFT.t1, LVL_DRAFT.t1Choice);
@@ -1364,7 +1364,7 @@ function renderLevelUpBox(char, container) {
   }
 
   const mapForT1 = buildChoicesMap('t1');
-  const acqForT1 = baseSt.talents.concat(LVL_DRAFT.t2 ? [LVL_DRAFT.t2] : []).concat(LVL_DRAFT.te ? [LVL_DRAFT.te] : []);
+  const acqForT1 = baseSt.talents.concat(LVL_DRAFT.t2 ? new Array(LVL_DRAFT.t2) : new Array()).concat(LVL_DRAFT.te ? new Array(LVL_DRAFT.te) : new Array());
   const eligT1 = RULES.talents.filter(function(t) { return t.type === 'commun' && isTalentEligible(t.nom, rawCaracs, acqForT1, nextLvl, mapForT1); });
   if (LVL_DRAFT.t1 && !eligT1.some(function(t) { return t.nom === LVL_DRAFT.t1; })) { LVL_DRAFT.t1 = ''; LVL_DRAFT.t1Choice = ''; }
 
@@ -1382,7 +1382,7 @@ function renderLevelUpBox(char, container) {
 
   const t1ChoicesList = getChoicesForTalent(LVL_DRAFT.t1);
   if (t1ChoicesList) {
-    const used1 = mapForT1[LVL_DRAFT.t1] || [];
+    const used1 = mapForT1[LVL_DRAFT.t1] || new Array();
     const avail1 = t1ChoicesList.filter(function(ch) { return !used1.includes(ch); });
     if (!avail1.includes(LVL_DRAFT.t1Choice)) LVL_DRAFT.t1Choice = avail1.at(0) || '';
     const selSub1 = el('select', ''); selSub1.style.width = '100%'; selSub1.style.background = '#fef3c7';
@@ -1397,7 +1397,7 @@ function renderLevelUpBox(char, container) {
   row.appendChild(t1Div);
 
   const mapForT2 = buildChoicesMap('t2');
-  const acqForT2 = baseSt.talents.concat(LVL_DRAFT.t1 ? [LVL_DRAFT.t1] : []).concat(LVL_DRAFT.te ? [LVL_DRAFT.te] : []);
+  const acqForT2 = baseSt.talents.concat(LVL_DRAFT.t1 ? new Array(LVL_DRAFT.t1) : new Array()).concat(LVL_DRAFT.te ? new Array(LVL_DRAFT.te) : new Array());
   const eligT2 = RULES.talents.filter(function(t) { return t.type === 'commun' && isTalentEligible(t.nom, rawCaracs, acqForT2, nextLvl, mapForT2); });
   if (LVL_DRAFT.t2 && !eligT2.some(function(t) { return t.nom === LVL_DRAFT.t2; })) { LVL_DRAFT.t2 = ''; LVL_DRAFT.t2Choice = ''; }
 
@@ -1415,7 +1415,7 @@ function renderLevelUpBox(char, container) {
 
   const t2ChoicesList = getChoicesForTalent(LVL_DRAFT.t2);
   if (t2ChoicesList) {
-    const used2 = mapForT2[LVL_DRAFT.t2] || [];
+    const used2 = mapForT2[LVL_DRAFT.t2] || new Array();
     const avail2 = t2ChoicesList.filter(function(ch) { return !used2.includes(ch); });
     if (!avail2.includes(LVL_DRAFT.t2Choice)) LVL_DRAFT.t2Choice = avail2.at(0) || '';
     const selSub2 = el('select', ''); selSub2.style.width = '100%'; selSub2.style.background = '#fef3c7';
@@ -1431,7 +1431,7 @@ function renderLevelUpBox(char, container) {
 
   if (hasEpique) {
     const mapForTe = buildChoicesMap('te');
-    const acqForTe = baseSt.talents.concat(LVL_DRAFT.t1 ? [LVL_DRAFT.t1] : []).concat(LVL_DRAFT.t2 ? [LVL_DRAFT.t2] : []);
+    const acqForTe = baseSt.talents.concat(LVL_DRAFT.t1 ? new Array(LVL_DRAFT.t1) : new Array()).concat(LVL_DRAFT.t2 ? new Array(LVL_DRAFT.t2) : new Array());
     const eligTe = RULES.talents.filter(function(t) { return t.type === 'epique' && isTalentEligible(t.nom, rawCaracs, acqForTe, nextLvl, mapForTe); });
     if (LVL_DRAFT.te && !eligTe.some(function(t) { return t.nom === LVL_DRAFT.te; })) { LVL_DRAFT.te = ''; LVL_DRAFT.teChoice = ''; }
 
@@ -1449,7 +1449,7 @@ function renderLevelUpBox(char, container) {
 
     const teChoicesList = getChoicesForTalent(LVL_DRAFT.te);
     if (teChoicesList) {
-      const usedE = mapForTe[LVL_DRAFT.te] || [];
+      const usedE = mapForTe[LVL_DRAFT.te] || new Array();
       const availE = teChoicesList.filter(function(ch) { return !usedE.includes(ch); });
       if (!availE.includes(LVL_DRAFT.teChoice)) LVL_DRAFT.teChoice = availE.at(0) || '';
       const selSubE = el('select', ''); selSubE.style.width = '100%'; selSubE.style.background = '#fef3c7';
@@ -1465,28 +1465,28 @@ function renderLevelUpBox(char, container) {
   }
   box.appendChild(row);
 
-  const chosenTalents = [LVL_DRAFT.t1, LVL_DRAFT.t2, LVL_DRAFT.te].filter(Boolean);
+  const chosenTalents = new Array(LVL_DRAFT.t1, LVL_DRAFT.t2, LVL_DRAFT.te).filter(Boolean);
   const spellSlots = getSpellSlotsForTalents(chosenTalents);
   if (spellSlots.length > 0) {
     const spWrap = el('div', 'border bg-purple-50 space-y-2');
     spWrap.appendChild(el('strong', '', 'Choix des nouveaux sorts débloqués :'));
     spellSlots.forEach(function(slotLabel, idx) {
-      if (!LVL_DRAFT.spells[idx]) LVL_DRAFT.spells[idx] = { voie: 'Air', nom: 'Ascension' };
+      if (!LVL_DRAFT.spells.at(idx)) LVL_DRAFT.spells[idx] = { voie: 'Air', nom: 'Ascension' };
       const sRow = el('div', 'flex');
       sRow.appendChild(el('span', '', slotLabel + ' :'));
       const selV = el('select', '');
-      (RULES.voies_magiques || []).forEach(function(v) {
+      (RULES.voies_magiques || new Array()).forEach(function(v) {
         const o = el('option', '', v.voie); o.value = v.voie;
-        if (LVL_DRAFT.spells[idx].voie === v.voie) o.selected = true;
+        if (LVL_DRAFT.spells.at(idx).voie === v.voie) o.selected = true;
         selV.appendChild(o);
       });
       const selS = el('select', '');
-      const vObj = (RULES.voies_magiques || []).find(function(x) { return x.voie === selV.value; });
+      const vObj = (RULES.voies_magiques || new Array()).find(function(x) { return x.voie === selV.value; });
       if (vObj) {
-        if (!vObj.sorts.includes(LVL_DRAFT.spells[idx].nom)) LVL_DRAFT.spells[idx].nom = vObj.sorts.at(0);
+        if (!vObj.sorts.includes(LVL_DRAFT.spells.at(idx).nom)) LVL_DRAFT.spells[idx].nom = vObj.sorts.at(0);
         vObj.sorts.forEach(function(s) {
           const o = el('option', '', s); o.value = s;
-          if (LVL_DRAFT.spells[idx].nom === s) o.selected = true;
+          if (LVL_DRAFT.spells.at(idx).nom === s) o.selected = true;
           selS.appendChild(o);
         });
       }
@@ -1497,15 +1497,16 @@ function renderLevelUpBox(char, container) {
     });
     box.appendChild(spWrap);
   } else {
-    LVL_DRAFT.spells = [];
+    LVL_DRAFT.spells = new Array();
   }
-
-  const btnVal = el('button', 'bg-amber-800', 'Valider le passage au Niveau ' + nextLvl);
-  btnVal.style.width = '100%';
+const btnVal = el('button', 'bg-amber-800', 'Valider le passage au Niveau ' + nextLvl);
+btnVal.style.width = '100%';
 btnVal.onclick = function() { confirmLevelUp(char.id, nextLvl, hasCaracChoice, hasEpique, spellSlots.length); };
 box.appendChild(btnVal);
 container.appendChild(box);
 }
+
+
 function formatChoicesMap(cMap) {
 if (!cMap) return '';
 const parts = [];

@@ -469,16 +469,35 @@ function computeMagicPower(char, st) {
 }
 
 function renderMagicBlock(char, st, mount) {
-  const rituelsList = ['Danse sacrée', 'Extase', 'Horoscope', 'Humilité', 'Incantation', 'Invocation', 'Méditation', 'Momentum', 'Pacifisme', 'Pauvreté', 'Pureté', 'Sacrifice', 'Solennité', 'Talisman', 'Assistance', 'Potion', 'Alchimie', 'Elixir'];
-  const ownedRituels = rituelsList.filter(function(r) { return st.talents.includes(r); });
+  const baseRituels = ['Formule', 'Gestuelle', 'Inscription', 'Catalyseur', 'Ingrédient', 'Transe'];
+  const talentRituels = ['Danse sacrée', 'Extase', 'Horoscope', 'Humilité', 'Incantation', 'Invocation', 'Méditation', 'Momentum', 'Pacifisme', 'Pauvreté', 'Pureté', 'Sacrifice', 'Solennité', 'Talisman', 'Assistance', 'Potion', 'Alchimie', 'Elixir'];
+  const ownedTalentRituels = talentRituels.filter(function(r) { return st.talents.includes(r); });
 
   const ritBox = el('div', 'bg-purple-50 border space-y-2');
-  ritBox.appendChild(el('strong', '', 'Rituels & Préparations disponibles :'));
-  if (ownedRituels.length === 0) {
-    ritBox.appendChild(el('div', '', 'Aucun talent de rituel acquis.'));
-  } else {
+  ritBox.appendChild(el('strong', '', 'Rituels de base (accessibles à tout lanceur de sorts) :'));
+  const baseGrid = el('div', 'flex');
+  baseRituels.forEach(function(rName) {
+    const wrap = el('label', 'border', '');
+    wrap.style.background = '#fff'; wrap.style.fontSize = '12px';
+    const sel = el('select', '');
+    sel.style.marginLeft = '6px';
+    [0, 1, 2].forEach(function(v) {
+      const o = el('option', '', v === 0 ? 'Inactif' : '+' + v);
+      o.value = v;
+      if ((ACTIVE_RITUELS[rName] || 0) == v) o.selected = true;
+      sel.appendChild(o);
+    });
+    sel.onchange = function() { ACTIVE_RITUELS[rName] = parseInt(sel.value); renderPlaySheet(); };
+    wrap.appendChild(document.createTextNode(rName));
+    wrap.appendChild(sel);
+    baseGrid.appendChild(wrap);
+  });
+  ritBox.appendChild(baseGrid);
+
+  if (ownedTalentRituels.length > 0) {
+    ritBox.appendChild(el('strong', '', 'Rituels & Préparations de talents :'));
     const rGrid = el('div', 'flex');
-    ownedRituels.forEach(function(rName) {
+    ownedTalentRituels.forEach(function(rName) {
       const wrap = el('label', 'border', '');
       wrap.style.background = '#fff'; wrap.style.fontSize = '12px';
       const sel = el('select', '');
@@ -522,6 +541,7 @@ function renderMagicBlock(char, st, mount) {
   }
   mount.appendChild(spBox);
 }
+
 
 
 async function rollMagicTest(char, label, pow) {
@@ -852,26 +872,9 @@ function getCreationTempCaracs() {
   return res;
 }
 
-function isTalentEligible(talentName, caracs, acquiredTalents, targetLevel) {
-  const lvl = targetLevel || 1;
-  const t = RULES.talents.find(function(x) { return x.nom === talentName; });
-  if (!t) return false;
-  if (t.niveau_min && t.niveau_min > lvl) return false;
-  const count = acquiredTalents.filter(function(x) { return x === talentName; }).length;
-  if (!t.cumulable && count >= 1) return false;
-  if (t.max_prises && count >= t.max_prises) return false;
-  const reqC = t.caracs || {};
-  for (const c of Object.keys(reqC)) {
-    if ((caracs[c] || 0) < reqC[c]) return false;
-  }
-  const reqT = t.talents || [];
-  for (let i = 0; i < reqT.length; i++) {
-    if (!acquiredTalents.includes(reqT[i])) return false;
-  }
-  return true;
-}
 
-let LVL_DRAFT = { charId: null, carac: '', t1: '', t2: '', te: '', spells: [] };
+
+
 function getSpellSlotsForTalents(tList) {
   let slots = [];
   tList.forEach(function(t) {
@@ -896,6 +899,57 @@ function updateCreationChoices() {
   updateCreationTalents();
 }
 
+
+
+function onClassTalentToggle(chk) {
+  const checked = document.querySelectorAll('input[name="c-cl-talent"]:checked');
+  if (checked.length > 4) {
+    chk.checked = false;
+    alert("Vous ne pouvez choisir que 4 talents de classe.");
+    return;
+  }
+  updateCreationTalents();
+}
+
+function getChoicesForTalent(tName) {
+  const t = RULES.talents.find(function(x) { return x.nom === tName; });
+  if (!t) return null;
+  if (t.choix && t.choix.length > 0) return t.choix;
+  if (tName === 'Affinité magique') return (RULES.voies_magiques || []).map(function(v) { return v.voie; });
+  if (tName === 'Spécialisation magique' || tName === 'Entraînement magique') {
+    let allSorts = [];
+    (RULES.voies_magiques || []).forEach(function(v) { allSorts = allSorts.concat(v.sorts); });
+    return allSorts;
+  }
+  return null;
+}
+
+function isTalentEligible(talentName, caracs, acquiredTalents, targetLevel, acquiredChoicesMap) {
+  const lvl = targetLevel || 1;
+  const t = RULES.talents.find(function(x) { return x.nom === talentName; });
+  if (!t) return false;
+  if (t.niveau_min && t.niveau_min > lvl) return false;
+  const count = acquiredTalents.filter(function(x) { return x === talentName; }).length;
+  const choicesList = getChoicesForTalent(talentName);
+  const allowMulti = Boolean(t.cumulable || choicesList);
+  if (!allowMulti && count >= 1) return false;
+  if (t.max_prises && count >= t.max_prises) return false;
+  if (choicesList && acquiredChoicesMap && acquiredChoicesMap[talentName]) {
+    if (acquiredChoicesMap[talentName].length >= choicesList.length) return false;
+  }
+  const reqC = t.caracs || {};
+  for (const c of Object.keys(reqC)) {
+    if ((caracs[c] || 0) < reqC[c]) return false;
+  }
+  const reqT = t.talents || [];
+  for (let i = 0; i < reqT.length; i++) {
+    if (!acquiredTalents.includes(reqT[i])) return false;
+  }
+  return true;
+}
+
+let CREATE_SUBCHOICES = { peuple: '', culture: '', classe: {} };
+
 function updateCreationTalents() {
   const caracs = getCreationTempCaracs();
   const pObj = RULES.peuples.find(function(p) { return p.nom === document.getElementById('c-peuple').value; });
@@ -908,26 +962,69 @@ function updateCreationTalents() {
   const prevP = pSel.value;
   pSel.innerHTML = '';
   pObj.talents.forEach(function(tName) {
-    const ok = isTalentEligible(tName, caracs, []);
+    const ok = isTalentEligible(tName, caracs, [], 1, {});
     const o = el('option', '', 'Talent Peuple : ' + tName + (ok ? '' : ' (Prérequis non remplis)'));
     o.value = tName; o.disabled = !ok;
     pSel.appendChild(o);
   });
   if (pObj.talents.includes(prevP)) pSel.value = prevP;
-  const acquired1 = pSel.value && isTalentEligible(pSel.value, caracs, []) ? [pSel.value] : [];
+  const pTal = pSel.value;
+  const acquired1 = pTal && isTalentEligible(pTal, caracs, [], 1, {}) ? [pTal] : [];
+
+  let pSubWrap = document.getElementById('c-peuple-subwrap');
+  if (!pSubWrap) { pSubWrap = el('div', ''); pSubWrap.id = 'c-peuple-subwrap'; pSel.parentNode.appendChild(pSubWrap); }
+  pSubWrap.innerHTML = '';
+  const choicesMap = {};
+  const pChoices = getChoicesForTalent(pTal);
+  if (pChoices) {
+    if (!pChoices.includes(CREATE_SUBCHOICES.peuple)) CREATE_SUBCHOICES.peuple = pChoices.at(0);
+    const sP = el('select', ''); sP.style.width = '100%'; sP.style.background = '#fef3c7';
+    pChoices.forEach(function(ch) {
+      const o = el('option', '', 'Spécialisation (' + pTal + ') : ' + ch); o.value = ch;
+      if (CREATE_SUBCHOICES.peuple === ch) o.selected = true;
+      sP.appendChild(o);
+    });
+    sP.onchange = function() { CREATE_SUBCHOICES.peuple = sP.value; updateCreationTalents(); };
+    pSubWrap.appendChild(sP);
+    choicesMap[pTal] = [CREATE_SUBCHOICES.peuple];
+  } else {
+    CREATE_SUBCHOICES.peuple = '';
+  }
 
   const cSel = document.getElementById('c-culture-talent');
   const prevC = cSel.value;
   cSel.innerHTML = '';
   cObj.talents.forEach(function(tName) {
-    const ok = isTalentEligible(tName, caracs, acquired1);
+    const ok = isTalentEligible(tName, caracs, acquired1, 1, choicesMap);
     const o = el('option', '', 'Talent Culture : ' + tName + (ok ? '' : ' (Prérequis non remplis)'));
     o.value = tName; o.disabled = !ok;
     cSel.appendChild(o);
   });
   if (cObj.talents.includes(prevC)) cSel.value = prevC;
+  const cTal = cSel.value;
   const acquired2 = acquired1.slice();
-  if (cSel.value && isTalentEligible(cSel.value, caracs, acquired1)) acquired2.push(cSel.value);
+  if (cTal && isTalentEligible(cTal, caracs, acquired1, 1, choicesMap)) acquired2.push(cTal);
+
+  let cSubWrap = document.getElementById('c-culture-subwrap');
+  if (!cSubWrap) { cSubWrap = el('div', ''); cSubWrap.id = 'c-culture-subwrap'; cSel.parentNode.appendChild(cSubWrap); }
+  cSubWrap.innerHTML = '';
+  const cChoices = getChoicesForTalent(cTal);
+  if (cChoices) {
+    const usedForC = choicesMap[cTal] || [];
+    const availC = cChoices.filter(function(ch) { return !usedForC.includes(ch); });
+    if (!availC.includes(CREATE_SUBCHOICES.culture)) CREATE_SUBCHOICES.culture = availC.at(0) || '';
+    const sC = el('select', ''); sC.style.width = '100%'; sC.style.background = '#fef3c7';
+    availC.forEach(function(ch) {
+      const o = el('option', '', 'Spécialisation (' + cTal + ') : ' + ch); o.value = ch;
+      if (CREATE_SUBCHOICES.culture === ch) o.selected = true;
+      sC.appendChild(o);
+    });
+    sC.onchange = function() { CREATE_SUBCHOICES.culture = sC.value; updateCreationTalents(); };
+    cSubWrap.appendChild(sC);
+    if (CREATE_SUBCHOICES.culture) choicesMap[cTal] = usedForC.concat([CREATE_SUBCHOICES.culture]);
+  } else {
+    CREATE_SUBCHOICES.culture = '';
+  }
 
   let validChecked = [];
   let changed = true;
@@ -935,7 +1032,7 @@ function updateCreationTalents() {
     changed = false;
     prevChecked.forEach(function(tName) {
       if (clObj.talents.includes(tName) && !validChecked.includes(tName)) {
-        if (isTalentEligible(tName, caracs, acquired2.concat(validChecked))) {
+        if (isTalentEligible(tName, caracs, acquired2.concat(validChecked), 1, choicesMap)) {
           validChecked.push(tName);
           changed = true;
         }
@@ -948,7 +1045,7 @@ function updateCreationTalents() {
   clObj.talents.forEach(function(tName) {
     const isChecked = validChecked.includes(tName);
     const othersChecked = validChecked.filter(function(x) { return x !== tName; });
-    const ok = isChecked || isTalentEligible(tName, caracs, acquired2.concat(othersChecked));
+    const ok = isChecked || isTalentEligible(tName, caracs, acquired2.concat(othersChecked), 1, choicesMap);
     const tInfo = RULES.talents.find(function(x) { return x.nom === tName; });
     const lbl = el('label', 'border flex');
     lbl.style.background = ok ? '#fff' : '#f5f5f4';
@@ -958,22 +1055,28 @@ function updateCreationTalents() {
     chk.type = 'checkbox'; chk.name = 'c-cl-talent'; chk.value = tName;
     chk.checked = isChecked; chk.disabled = !ok;
     chk.onchange = function() { onClassTalentToggle(chk); };
-    const txt = el('div', '');
+    const txt = el('div', ''); txt.style.flex = '1';
     txt.appendChild(el('strong', '', tName));
     txt.appendChild(el('div', '', tInfo ? tInfo.effet : ''));
+
+    const clChoices = getChoicesForTalent(tName);
+    if (isChecked && clChoices) {
+      const usedForCl = choicesMap[tName] || [];
+      const availCl = clChoices.filter(function(ch) { return !usedForCl.includes(ch); });
+      if (!availCl.includes(CREATE_SUBCHOICES.classe[tName])) CREATE_SUBCHOICES.classe[tName] = availCl.at(0) || '';
+      const sCl = el('select', ''); sCl.style.marginTop = '4px'; sCl.style.background = '#fef3c7';
+      availCl.forEach(function(ch) {
+        const o = el('option', '', 'Choix : ' + ch); o.value = ch;
+        if (CREATE_SUBCHOICES.classe[tName] === ch) o.selected = true;
+        sCl.appendChild(o);
+      });
+      sCl.onchange = function() { CREATE_SUBCHOICES.classe[tName] = sCl.value; };
+      txt.appendChild(sCl);
+    }
+
     lbl.appendChild(chk); lbl.appendChild(txt);
     clDiv.appendChild(lbl);
   });
-}
-
-function onClassTalentToggle(chk) {
-  const checked = document.querySelectorAll('input[name="c-cl-talent"]:checked');
-  if (checked.length > 4) {
-    chk.checked = false;
-    alert("Vous ne pouvez choisir que 4 talents de classe.");
-    return;
-  }
-  updateCreationTalents();
 }
 
 async function saveNewCharacter() {
@@ -986,6 +1089,16 @@ async function saveNewCharacter() {
   const clTalents = Array.from(document.querySelectorAll('input[name="c-cl-talent"]:checked')).map(function(x) { return x.value; });
   if (clTalents.length !== 4) return alert("Veuillez sélectionner exactement 4 talents de classe.");
 
+  const choicesLvl1 = {};
+  const pushChoice = function(tName, val) {
+    if (!val) return;
+    if (!choicesLvl1[tName]) choicesLvl1[tName] = [];
+    choicesLvl1[tName].push(val);
+  };
+  pushChoice(pTalent, CREATE_SUBCHOICES.peuple);
+  pushChoice(cTalent, CREATE_SUBCHOICES.culture);
+  clTalents.forEach(function(tName) { pushChoice(tName, CREATE_SUBCHOICES.classe[tName]); });
+
   const charData = {
     portrait: CREATE_PORTRAIT,
     desir: document.getElementById('c-desire').value,
@@ -996,10 +1109,11 @@ async function saveNewCharacter() {
     classe: document.getElementById('c-classe').value,
     base_caracs: Object.assign({}, CREATE_CARACS),
     talents_lvl1: [pTalent, cTalent].concat(clTalents),
-    adaptation_milieu: "Forêt",
+    talent_choices_lvl1: choicesLvl1,
     sorts: [],
     level_caracs: {},
     level_talents: {},
+    level_talent_choices: {},
     inventaire: [{ nom: "Poings", categorie: "Arme", famille: "Lutte", mains: 1, poids: 0, force_min: 5, degat: 0, portee: 0 }],
     worn: { MainPrincipale: 0 },
     blessures: {},
@@ -1013,10 +1127,11 @@ async function saveNewCharacter() {
   });
   if (res.error) return alert("Erreur : " + res.error.message);
   CREATE_PORTRAIT = '';
-  document.getElementById('create-form-wrapper').classList.add('hidden');
-  alert("Personnage créé avec succès !");
-  await refreshAllData(true);
-  switchTab('play');
+CREATE_SUBCHOICES = { peuple: '', culture: '', classe: {} };
+document.getElementById('create-form-wrapper').classList.add('hidden');
+alert("Personnage créé avec succès !");
+await refreshAllData(true);
+switchTab('play');
 }
 
 
@@ -1189,17 +1304,19 @@ function renderManageSheet() {
   eqBox.appendChild(invList);
   container.appendChild(eqBox);
 }
+let LVL_DRAFT = { charId: null, carac: '', t1: '', t1Choice: '', t2: '', t2Choice: '', te: '', teChoice: '', spells: [] };
 
 function renderLevelUpBox(char, container) {
   const nextLvl = char.level + 1;
   if (LVL_DRAFT.charId !== char.id) {
-    LVL_DRAFT = { charId: char.id, carac: '', t1: '', t2: '', te: '', spells: [] };
+    LVL_DRAFT = { charId: char.id, carac: '', t1: '', t1Choice: '', t2: '', t2Choice: '', te: '', teChoice: '', spells: [] };
   }
 
   const fullChar = Object.assign({}, char, { effective_level: char.level });
   const baseSt = getEffectiveState(fullChar);
   const rawCaracs = Object.assign({}, baseSt.caracs);
   rawCaracs['Agilité'] += baseSt.armorMalusAgi;
+  const baseChoicesMap = baseSt.talentChoices || {};
 
   const hasCaracChoice = (nextLvl % 5 === 0);
   const prevPalierCarac = (char.data.level_caracs || {})[nextLvl - 5] || '';
@@ -1207,11 +1324,24 @@ function renderLevelUpBox(char, container) {
   if (hasCaracChoice && !availCaracs.includes(LVL_DRAFT.carac)) LVL_DRAFT.carac = '';
   if (hasCaracChoice && LVL_DRAFT.carac) rawCaracs[LVL_DRAFT.carac] += 1;
 
-  const hasEpique = [15, 18, 21, 24, 27, 30].includes(nextLvl);
+  const hasEpique =.includes(nextLvl);
+
+  const buildChoicesMap = function(excludeSlot) {
+    const map = {};
+    Object.keys(baseChoicesMap).forEach(function(k) { map[k] = baseChoicesMap[k].slice(); });
+    const add = function(t, ch) {
+      if (!t || !ch) return;
+      if (!map[t]) map[t] = [];
+      map[t].push(ch);
+    };
+    if (excludeSlot !== 't1') add(LVL_DRAFT.t1, LVL_DRAFT.t1Choice);
+    if (excludeSlot !== 't2') add(LVL_DRAFT.t2, LVL_DRAFT.t2Choice);
+    if (excludeSlot !== 'te') add(LVL_DRAFT.te, LVL_DRAFT.teChoice);
+    return map;
+  };
 
   const box = el('div', 'border bg-amber-50 space-y-3');
   box.appendChild(el('strong', '', 'Passage au Niveau ' + nextLvl + ' :'));
-
   const row = el('div', 'grid grid-cols-2');
 
   if (hasCaracChoice) {
@@ -1230,11 +1360,12 @@ function renderLevelUpBox(char, container) {
     row.appendChild(cDiv);
   }
 
+  const mapForT1 = buildChoicesMap('t1');
   const acqForT1 = baseSt.talents.concat(LVL_DRAFT.t2 ? [LVL_DRAFT.t2] : []).concat(LVL_DRAFT.te ? [LVL_DRAFT.te] : []);
-  const eligT1 = RULES.talents.filter(function(t) { return t.type === 'commun' && isTalentEligible(t.nom, rawCaracs, acqForT1, nextLvl); });
-  if (LVL_DRAFT.t1 && !eligT1.some(function(t) { return t.nom === LVL_DRAFT.t1; })) LVL_DRAFT.t1 = '';
+  const eligT1 = RULES.talents.filter(function(t) { return t.type === 'commun' && isTalentEligible(t.nom, rawCaracs, acqForT1, nextLvl, mapForT1); });
+  if (LVL_DRAFT.t1 && !eligT1.some(function(t) { return t.nom === LVL_DRAFT.t1; })) { LVL_DRAFT.t1 = ''; LVL_DRAFT.t1Choice = ''; }
 
-  const t1Div = el('div', '');
+  const t1Div = el('div', 'space-y-2');
   t1Div.appendChild(el('div', '', 'Talent commun 1/2 :'));
   const selT1 = el('select', ''); selT1.style.width = '100%';
   const ot10 = el('option', '', '— Choisir le talent 1 —'); ot10.value = ''; selT1.appendChild(ot10);
@@ -1243,82 +1374,142 @@ function renderLevelUpBox(char, container) {
     if (LVL_DRAFT.t1 === t.nom) o.selected = true;
     selT1.appendChild(o);
   });
-  selT1.onchange = function() { LVL_DRAFT.t1 = selT1.value; renderManageSheet(); };
+  selT1.onchange = function() { LVL_DRAFT.t1 = selT1.value; LVL_DRAFT.t1Choice = ''; renderManageSheet(); };
   t1Div.appendChild(selT1);
+
+  const t1ChoicesList = getChoicesForTalent(LVL_DRAFT.t1);
+  if (t1ChoicesList) {
+    const used1 = mapForT1[LVL_DRAFT.t1] || [];
+    const avail1 = t1ChoicesList.filter(function(ch) { return !used1.includes(ch); });
+    if (!avail1.includes(LVL_DRAFT.t1Choice)) LVL_DRAFT.t1Choice = avail1.at(0) || '';
+    const selSub1 = el('select', ''); selSub1.style.width = '100%'; selSub1.style.background = '#fef3c7';
+    avail1.forEach(function(ch) {
+      const o = el('option', '', 'Spécialisation (' + LVL_DRAFT.t1 + ') : ' + ch); o.value = ch;
+      if (LVL_DRAFT.t1Choice === ch) o.selected = true;
+      selSub1.appendChild(o);
+    });
+    selSub1.onchange = function() { LVL_DRAFT.t1Choice = selSub1.value; renderManageSheet(); };
+    t1Div.appendChild(selSub1);
+  }
   row.appendChild(t1Div);
 
+  const mapForT2 = buildChoicesMap('t2');
   const acqForT2 = baseSt.talents.concat(LVL_DRAFT.t1 ? [LVL_DRAFT.t1] : []).concat(LVL_DRAFT.te ? [LVL_DRAFT.te] : []);
-  const eligT2 = RULES.talents.filter(function(t) { return t.type === 'commun' && isTalentEligible(t.nom, rawCaracs, acqForT2, nextLvl); });
-  if (LVL_DRAFT.t2 && !eligT2.some(function(t) { return t.nom === LVL_DRAFT.t2; })) LVL_DRAFT.t2 = '';
-const t2Div = el('div', '');
-t2Div.appendChild(el('div', '', 'Talent commun 2/2 :'));
-const selT2 = el('select', ''); selT2.style.width = '100%';
-const ot20 = el('option', '', '— Choisir le talent 2 —'); ot20.value = ''; selT2.appendChild(ot20);
-eligT2.forEach(function(t) {
-const o = el('option', '', t.nom + ' — ' + t.effet); o.value = t.nom;
-if (LVL_DRAFT.t2 === t.nom) o.selected = true;
-selT2.appendChild(o);
-});
-selT2.onchange = function() { LVL_DRAFT.t2 = selT2.value; renderManageSheet(); };
-t2Div.appendChild(selT2);
-row.appendChild(t2Div);
-if (hasEpique) {
-const acqForTe = baseSt.talents.concat(LVL_DRAFT.t1 ? [LVL_DRAFT.t1] : []).concat(LVL_DRAFT.t2 ? [LVL_DRAFT.t2] : []);
-const eligTe = RULES.talents.filter(function(t) { return t.type === 'epique' && isTalentEligible(t.nom, rawCaracs, acqForTe, nextLvl); });
-if (LVL_DRAFT.te && !eligTe.some(function(t) { return t.nom === LVL_DRAFT.te; })) LVL_DRAFT.te = '';
-const teDiv = el('div', '');
-teDiv.appendChild(el('div', '', 'Talent Épique (Palier ' + nextLvl + ') :'));
-const selTe = el('select', ''); selTe.style.width = '100%';
-const ote0 = el('option', '', '— Choisir un talent épique —'); ote0.value = ''; selTe.appendChild(ote0);
-eligTe.forEach(function(t) {
-const o = el('option', '', t.nom + ' — ' + t.effet); o.value = t.nom;
-if (LVL_DRAFT.te === t.nom) o.selected = true;
-selTe.appendChild(o);
-});
-selTe.onchange = function() { LVL_DRAFT.te = selTe.value; renderManageSheet(); };
-teDiv.appendChild(selTe);
-row.appendChild(teDiv);
-}
-box.appendChild(row);
-const chosenTalents = [LVL_DRAFT.t1, LVL_DRAFT.t2, LVL_DRAFT.te].filter(Boolean);
-const spellSlots = getSpellSlotsForTalents(chosenTalents);
-if (spellSlots.length > 0) {
-const spWrap = el('div', 'border bg-purple-50 space-y-2');
-spWrap.appendChild(el('strong', '', 'Choix des nouveaux sorts débloqués :'));
-spellSlots.forEach(function(slotLabel, idx) {
-if (!LVL_DRAFT.spells[idx]) LVL_DRAFT.spells[idx] = { voie: 'Air', nom: 'Ascension' };
-const sRow = el('div', 'flex');
-sRow.appendChild(el('span', '', slotLabel + ' :'));
-const selV = el('select', '');
-(RULES.voies_magiques || []).forEach(function(v) {
-const o = el('option', '', v.voie); o.value = v.voie;
-if (LVL_DRAFT.spells[idx].voie === v.voie) o.selected = true;
-selV.appendChild(o);
-});
-const selS = el('select', '');
-const vObj = (RULES.voies_magiques || []).find(function(x) { return x.voie === selV.value; });
-if (vObj) {
-if (!vObj.sorts.includes(LVL_DRAFT.spells[idx].nom)) LVL_DRAFT.spells[idx].nom = vObj.sorts.at(0);
-vObj.sorts.forEach(function(s) {
-const o = el('option', '', s); o.value = s;
-if (LVL_DRAFT.spells[idx].nom === s) o.selected = true;
-selS.appendChild(o);
-});
-}
-selV.onchange = function() { LVL_DRAFT.spells[idx] = { voie: selV.value, nom: '' }; renderManageSheet(); };
-selS.onchange = function() { LVL_DRAFT.spells[idx].nom = selS.value; };
-sRow.appendChild(selV); sRow.appendChild(selS);
-spWrap.appendChild(sRow);
-});
-box.appendChild(spWrap);
-} else {
-LVL_DRAFT.spells = [];
-}
-const btnVal = el('button', 'bg-amber-800', 'Valider le passage au Niveau ' + nextLvl);
-btnVal.style.width = '100%';
+  const eligT2 = RULES.talents.filter(function(t) { return t.type === 'commun' && isTalentEligible(t.nom, rawCaracs, acqForT2, nextLvl, mapForT2); });
+  if (LVL_DRAFT.t2 && !eligT2.some(function(t) { return t.nom === LVL_DRAFT.t2; })) { LVL_DRAFT.t2 = ''; LVL_DRAFT.t2Choice = ''; }
+
+  const t2Div = el('div', 'space-y-2');
+  t2Div.appendChild(el('div', '', 'Talent commun 2/2 :'));
+  const selT2 = el('select', ''); selT2.style.width = '100%';
+  const ot20 = el('option', '', '— Choisir le talent 2 —'); ot20.value = ''; selT2.appendChild(ot20);
+  eligT2.forEach(function(t) {
+    const o = el('option', '', t.nom + ' — ' + t.effet); o.value = t.nom;
+    if (LVL_DRAFT.t2 === t.nom) o.selected = true;
+    selT2.appendChild(o);
+  });
+  selT2.onchange = function() { LVL_DRAFT.t2 = selT2.value; LVL_DRAFT.t2Choice = ''; renderManageSheet(); };
+  t2Div.appendChild(selT2);
+
+  const t2ChoicesList = getChoicesForTalent(LVL_DRAFT.t2);
+  if (t2ChoicesList) {
+    const used2 = mapForT2[LVL_DRAFT.t2] || [];
+    const avail2 = t2ChoicesList.filter(function(ch) { return !used2.includes(ch); });
+    if (!avail2.includes(LVL_DRAFT.t2Choice)) LVL_DRAFT.t2Choice = avail2.at(0) || '';
+    const selSub2 = el('select', ''); selSub2.style.width = '100%'; selSub2.style.background = '#fef3c7';
+    avail2.forEach(function(ch) {
+      const o = el('option', '', 'Spécialisation (' + LVL_DRAFT.t2 + ') : ' + ch); o.value = ch;
+      if (LVL_DRAFT.t2Choice === ch) o.selected = true;
+      selSub2.appendChild(o);
+    });
+    selSub2.onchange = function() { LVL_DRAFT.t2Choice = selSub2.value; renderManageSheet(); };
+    t2Div.appendChild(selSub2);
+  }
+  row.appendChild(t2Div);
+
+  if (hasEpique) {
+    const mapForTe = buildChoicesMap('te');
+    const acqForTe = baseSt.talents.concat(LVL_DRAFT.t1 ? [LVL_DRAFT.t1] : []).concat(LVL_DRAFT.t2 ? [LVL_DRAFT.t2] : []);
+    const eligTe = RULES.talents.filter(function(t) { return t.type === 'epique' && isTalentEligible(t.nom, rawCaracs, acqForTe, nextLvl, mapForTe); });
+    if (LVL_DRAFT.te && !eligTe.some(function(t) { return t.nom === LVL_DRAFT.te; })) { LVL_DRAFT.te = ''; LVL_DRAFT.teChoice = ''; }
+
+    const teDiv = el('div', 'space-y-2');
+    teDiv.appendChild(el('div', '', 'Talent Épique (Palier ' + nextLvl + ') :'));
+    const selTe = el('select', ''); selTe.style.width = '100%';
+    const ote0 = el('option', '', '— Choisir un talent épique —'); ote0.value = ''; selTe.appendChild(ote0);
+    eligTe.forEach(function(t) {
+      const o = el('option', '', t.nom + ' — ' + t.effet); o.value = t.nom;
+      if (LVL_DRAFT.te === t.nom) o.selected = true;
+      selTe.appendChild(o);
+    });
+    selTe.onchange = function() { LVL_DRAFT.te = selTe.value; LVL_DRAFT.teChoice = ''; renderManageSheet(); };
+    teDiv.appendChild(selTe);
+
+    const teChoicesList = getChoicesForTalent(LVL_DRAFT.te);
+    if (teChoicesList) {
+      const usedE = mapForTe[LVL_DRAFT.te] || [];
+      const availE = teChoicesList.filter(function(ch) { return !usedE.includes(ch); });
+      if (!availE.includes(LVL_DRAFT.teChoice)) LVL_DRAFT.teChoice = availE.at(0) || '';
+      const selSubE = el('select', ''); selSubE.style.width = '100%'; selSubE.style.background = '#fef3c7';
+      availE.forEach(function(ch) {
+        const o = el('option', '', 'Spécialisation (' + LVL_DRAFT.te + ') : ' + ch); o.value = ch;
+        if (LVL_DRAFT.teChoice === ch) o.selected = true;
+        selSubE.appendChild(o);
+      });
+      selSubE.onchange = function() { LVL_DRAFT.teChoice = selSubE.value; renderManageSheet(); };
+      teDiv.appendChild(selSubE);
+    }
+    row.appendChild(teDiv);
+  }
+  box.appendChild(row);
+
+  const chosenTalents = [LVL_DRAFT.t1, LVL_DRAFT.t2, LVL_DRAFT.te].filter(Boolean);
+  const spellSlots = getSpellSlotsForTalents(chosenTalents);
+  if (spellSlots.length > 0) {
+    const spWrap = el('div', 'border bg-purple-50 space-y-2');
+    spWrap.appendChild(el('strong', '', 'Choix des nouveaux sorts débloqués :'));
+    spellSlots.forEach(function(slotLabel, idx) {
+      if (!LVL_DRAFT.spells[idx]) LVL_DRAFT.spells[idx] = { voie: 'Air', nom: 'Ascension' };
+      const sRow = el('div', 'flex');
+      sRow.appendChild(el('span', '', slotLabel + ' :'));
+      const selV = el('select', '');
+      (RULES.voies_magiques || []).forEach(function(v) {
+        const o = el('option', '', v.voie); o.value = v.voie;
+        if (LVL_DRAFT.spells[idx].voie === v.voie) o.selected = true;
+        selV.appendChild(o);
+      });
+      const selS = el('select', '');
+      const vObj = (RULES.voies_magiques || []).find(function(x) { return x.voie === selV.value; });
+      if (vObj) {
+        if (!vObj.sorts.includes(LVL_DRAFT.spells[idx].nom)) LVL_DRAFT.spells[idx].nom = vObj.sorts.at(0);
+        vObj.sorts.forEach(function(s) {
+          const o = el('option', '', s); o.value = s;
+          if (LVL_DRAFT.spells[idx].nom === s) o.selected = true;
+          selS.appendChild(o);
+        });
+      }
+      selV.onchange = function() { LVL_DRAFT.spells[idx] = { voie: selV.value, nom: '' }; renderManageSheet(); };
+      selS.onchange = function() { LVL_DRAFT.spells[idx].nom = selS.value; };
+      sRow.appendChild(selV); sRow.appendChild(selS);
+      spWrap.appendChild(sRow);
+    });
+    box.appendChild(spWrap);
+  } else {
+    LVL_DRAFT.spells = [];
+  }
+
+  const btnVal = el('button', 'bg-amber-800', 'Valider le passage au Niveau ' + nextLvl);
+  btnVal.style.width = '100%';
 btnVal.onclick = function() { confirmLevelUp(char.id, nextLvl, hasCaracChoice, hasEpique, spellSlots.length); };
 box.appendChild(btnVal);
 container.appendChild(box);
+}
+function formatChoicesMap(cMap) {
+if (!cMap) return '';
+const parts = [];
+Object.keys(cMap).forEach(function(t) {
+if (cMap[t] && cMap[t].length > 0) parts.push(t + ' : ' + cMap[t].join(', '));
+});
+return parts.length > 0 ? ' [' + parts.join(' ; ') + ']' : '';
 }
 function renderCareerHistory(char, container) {
 const histBox = el('div', 'border space-y-2');
@@ -1329,61 +1520,70 @@ const row = el('div', 'border bg-stone-50');
 row.style.fontSize = '12px';
 const cGain = (d.level_caracs || {})[lvl];
 const tGains = (d.level_talents || {})[lvl] || [];
+const chGains = (d.level_talent_choices || {})[lvl];
 const sGains = (d.level_sorts || {})[lvl] || [];
 let txt = 'Niveau ' + lvl + ' : ';
 if (cGain) txt += '[+1 ' + cGain + '] ';
-txt += 'Talents : ' + (tGains.join(', ') || '—');
+txt += 'Talents : ' + (tGains.join(', ') || '—') + formatChoicesMap(chGains);
 if (sGains.length > 0) txt += ' | Sorts : ' + sGains.map(function(s) { return s.nom + ' (' + s.voie + ')'; }).join(', ');
 row.textContent = txt;
 histBox.appendChild(row);
 }
 const lvl1Row = el('div', 'border bg-stone-50');
 lvl1Row.style.fontSize = '12px';
-lvl1Row.textContent = 'Niveau 1 (Création) : ' + d.peuple + ' (+1 ' + d.peuple_carac + '), ' + d.culture + ' (+1 ' + d.culture_carac + '), ' + d.classe + ' | Talents : ' + (d.talents_lvl1 || []).join(', ');
+lvl1Row.textContent = 'Niveau 1 (Création) : ' + d.peuple + ' (+1 ' + d.peuple_carac + '), ' + d.culture + ' (+1 ' + d.culture_carac + '), ' + d.classe + ' | Talents : ' + (d.talents_lvl1 || []).join(', ') + formatChoicesMap(d.talent_choices_lvl1);
 histBox.appendChild(lvl1Row);
 container.appendChild(histBox);
 }
 async function confirmLevelUp(charId, nextLvl, hasCaracChoice, hasEpique, spellCount) {
-  if (hasCaracChoice && !LVL_DRAFT.carac) return alert("Veuillez choisir une caractéristique (+1).");
-  if (!LVL_DRAFT.t1 || !LVL_DRAFT.t2) return alert("Veuillez sélectionner les 2 talents communs.");
-  if (hasEpique && !LVL_DRAFT.te) return alert("Veuillez sélectionner un talent épique.");
-
-  const char = CHARACTERS.find(function(c) { return c.id === charId; });
-  const d = Object.assign({}, char.data);
-
-  if (hasCaracChoice) {
-    d.level_caracs = Object.assign({}, d.level_caracs || {});
-    d.level_caracs[nextLvl] = LVL_DRAFT.carac;
-  }
-
-  const gainedTalents = [LVL_DRAFT.t1, LVL_DRAFT.t2];
-  if (hasEpique) gainedTalents.push(LVL_DRAFT.te);
-  d.level_talents = Object.assign({}, d.level_talents || {});
-  d.level_talents[nextLvl] = gainedTalents;
-
-  if (spellCount > 0) {
-    d.level_sorts = Object.assign({}, d.level_sorts || {});
-    d.level_sorts[nextLvl] = LVL_DRAFT.spells.slice(0, spellCount);
-  }
-
-  LVL_DRAFT = { charId: null, carac: '', t1: '', t2: '', te: '', spells: [] };
-  await sb.from('characters').update({ level: nextLvl, effective_level: nextLvl, data: d }).eq('id', charId);
-  alert("Passage au Niveau " + nextLvl + " validé !");
+if (hasCaracChoice && !LVL_DRAFT.carac) return alert("Veuillez choisir une caractéristique (+1).");
+if (!LVL_DRAFT.t1 || !LVL_DRAFT.t2) return alert("Veuillez sélectionner les 2 talents communs.");
+if (hasEpique && !LVL_DRAFT.te) return alert("Veuillez sélectionner un talent épique.");
+const char = CHARACTERS.find(function(c) { return c.id === charId; });
+const d = Object.assign({}, char.data);
+if (hasCaracChoice) {
+d.level_caracs = Object.assign({}, d.level_caracs || {});
+d.level_caracs[nextLvl] = LVL_DRAFT.carac;
 }
-
+const gainedTalents = [LVL_DRAFT.t1, LVL_DRAFT.t2];
+if (hasEpique) gainedTalents.push(LVL_DRAFT.te);
+d.level_talents = Object.assign({}, d.level_talents || {});
+d.level_talents[nextLvl] = gainedTalents;
+const lvlChoices = {};
+const pushChoice = function(t, ch) {
+if (!t || !ch) return;
+if (!lvlChoices[t]) lvlChoices[t] = [];
+lvlChoices[t].push(ch);
+};
+pushChoice(LVL_DRAFT.t1, LVL_DRAFT.t1Choice);
+pushChoice(LVL_DRAFT.t2, LVL_DRAFT.t2Choice);
+if (hasEpique) pushChoice(LVL_DRAFT.te, LVL_DRAFT.teChoice);
+d.level_talent_choices = Object.assign({}, d.level_talent_choices || {});
+d.level_talent_choices[nextLvl] = lvlChoices;
+if (spellCount > 0) {
+d.level_sorts = Object.assign({}, d.level_sorts || {});
+d.level_sorts[nextLvl] = LVL_DRAFT.spells.slice(0, spellCount);
+}
+LVL_DRAFT = { charId: null, carac: '', t1: '', t1Choice: '', t2: '', t2Choice: '', te: '', teChoice: '', spells: [] };
+await sb.from('characters').update({ level: nextLvl, effective_level: nextLvl, data: d }).eq('id', charId);
+alert("Passage au Niveau " + nextLvl + " validé !");
+}
 async function revertLastLevel(charId) {
-  const char = CHARACTERS.find(function(c) { return c.id === charId; });
-  if (!char || char.level <= 1) return;
-  if (!confirm("Annuler le niveau " + char.level + " et revenir au niveau " + (char.level - 1) + " ?")) return;
-  const oldLvl = char.level;
-  const newLvl = oldLvl - 1;
-  const d = Object.assign({}, char.data);
-  if (d.level_caracs) delete d.level_caracs[oldLvl];
-  if (d.level_talents) delete d.level_talents[oldLvl];
-  if (d.level_sorts) delete d.level_sorts[oldLvl];
-  LVL_DRAFT = { charId: null, carac: '', t1: '', t2: '', te: '', spells: [] };
-  await sb.from('characters').update({ level: newLvl, effective_level: Math.min(char.effective_level, newLvl), data: d }).eq('id', charId);
+const char = CHARACTERS.find(function(c) { return c.id === charId; });
+if (!char || char.level <= 1) return;
+if (!confirm("Annuler le niveau " + char.level + " et revenir au niveau " + (char.level - 1) + " ?")) return;
+const oldLvl = char.level;
+const newLvl = oldLvl - 1;
+const d = Object.assign({}, char.data);
+if (d.level_caracs) delete d.level_caracs[oldLvl];
+if (d.level_talents) delete d.level_talents[oldLvl];
+if (d.level_talent_choices) delete d.level_talent_choices[oldLvl];
+if (d.level_sorts) delete d.level_sorts[oldLvl];
+LVL_DRAFT = { charId: null, carac: '', t1: '', t1Choice: '', t2: '', t2Choice: '', te: '', teChoice: '', spells: [] };
+await sb.from('characters').update({ level: newLvl, effective_level: Math.min(char.effective_level, newLvl), data: d }).eq('id', charId);
 }
+  
+
 
 async function setEffectiveLevel(charId, lvl) {
   await sb.from('characters').update({ effective_level: parseInt(lvl) }).eq('id', charId);

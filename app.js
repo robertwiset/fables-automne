@@ -137,17 +137,30 @@ async function bootApp() {
   subscribeRealtime();
 }
 
-async function refreshAllData() {
+let LAST_SNAPSHOT = '';
+async function refreshAllData(force) {
   const results = await Promise.all([
     sb.from('characters').select('*').order('created_at', { ascending: true }),
     sb.from('scene_state').select('*').eq('id', 1).single(),
     sb.from('roll_history').select('*').order('created_at', { ascending: false }).limit(40),
     sb.from('combat_state').select('*').eq('id', 1).single()
   ]);
-  CHARACTERS = results[0].data || [];
-  SCENE = results[1].data || { environment: 'Normal', cover_terrain: 'Aucun', cover_obstacle: 'Aucun', cover_noise: 'Normal', cover_light: 'Normale' };
-  ROLLS = results[2].data || [];
-  COMBAT = results[3].data || { status: 'inactif', participants: [] };
+  const newChars = results.data || [];
+  const newScene = results.data || { environment: 'Normal', cover_terrain: 'Aucun', cover_obstacle: 'Aucun', cover_noise: 'Normal', cover_light: 'Normale' };
+  const newRolls = results.data || [];
+  const newCombat = results.data || { status: 'inactif', participants: [] };
+
+  const snapshot = JSON.stringify({ c: newChars, s: newScene, r: newRolls, cb: newCombat });
+  if (!force && snapshot === LAST_SNAPSHOT) return;
+
+  const activeTag = document.activeElement ? document.activeElement.tagName : '';
+  if (!force && (activeTag === 'SELECT' || activeTag === 'INPUT')) return;
+
+  LAST_SNAPSHOT = snapshot;
+  CHARACTERS = newChars;
+  SCENE = newScene;
+  ROLLS = newRolls;
+  COMBAT = newCombat;
 
   syncSceneUI();
   syncCharacterDropdowns();
@@ -855,14 +868,33 @@ function renderCharacterSheet() {
   const eqTop = el('div', 'flex flex-wrap justify-between items-center gap-2');
   eqTop.appendChild(el('h4', 'font-bold text-sm text-amber-900', 'Équipement (' + st.totalWeight + ' / ' + st.maxWeight + ' kg)'));
   if (isOwner) {
-    const addWrap = el('div', 'flex gap-1');
-    const selEq = el('select', 'border rounded p-1'); selEq.id = 'add-equip-sel';
-    RULES.equipements.forEach(function(e, i) { const o = el('option', '', e.nom + ' (' + e.poids + 'kg)'); o.value = i; selEq.appendChild(o); });
-    const bAddEq = el('button', 'bg-amber-800 text-white px-2 py-1 rounded', 'Ajouter');
+    const addWrap = el('div', 'flex flex-wrap gap-1 items-center');
+    const inpFilter = el('input', 'border rounded p-1 text-xs');
+    inpFilter.type = 'text';
+    inpFilter.placeholder = 'Rechercher (ex: épée, cuir...)';
+    const selEq = el('select', 'border rounded p-1 text-xs');
+    selEq.id = 'add-equip-sel';
+    const fillEquipOptions = function(term) {
+      const q = (term || '').toLowerCase().trim();
+      selEq.innerHTML = '';
+      RULES.equipements.forEach(function(e, i) {
+        if (!q || e.nom.toLowerCase().includes(q) || (e.categorie && e.categorie.toLowerCase().includes(q))) {
+          const o = el('option', '', e.nom + ' (' + e.poids + 'kg)');
+          o.value = i;
+          selEq.appendChild(o);
+        }
+      });
+    };
+    fillEquipOptions('');
+    inpFilter.oninput = function() { fillEquipOptions(inpFilter.value); };
+    const bAddEq = el('button', 'bg-amber-800 text-white px-2 py-1 rounded text-xs', 'Ajouter');
     bAddEq.onclick = function() { addEquipment(char.id); };
-    addWrap.appendChild(selEq); addWrap.appendChild(bAddEq);
+    addWrap.appendChild(inpFilter);
+    addWrap.appendChild(selEq);
+    addWrap.appendChild(bAddEq);
     eqTop.appendChild(addWrap);
   }
+
   eqBox.appendChild(eqTop);
 
   const slotGrid = el('div', 'grid grid-cols-1 sm:grid-cols-3 gap-2');

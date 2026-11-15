@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fables d'Automne — Compagnon JDR</title>
+  <script src="https://tailwindcss.com"></script>
+  <script src="https://jsdelivr.net"></script>
+  <style>
+    body { background-color: #1c1917; color: #f5f5f4; font-family: system-ui, -apple-system, sans-serif; }
+    .card { background-color: #292524; border: 1px solid #44403c; border-radius: 0.5rem; padding: 1rem; }
+    .btn { padding: 0.45rem 0.9rem; border-radius: 0.375rem; font-weight: 600; cursor: pointer; transition: 0.15s; }
+    .btn-primary { background-color: #d97706; color: #fff; }
+    .btn-primary:hover { background-color: #b45309; }
+    .btn-secondary { background-color: #44403c; color: #e7e5e4; }
+    .btn-secondary:hover { background-color: #57534e; }
+    .btn-danger { background-color: #991b1b; color: #fff; }
+    .btn-danger:hover { background-color: #7f1d1d; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    input, select { background-color: #1c1917; border: 1px solid #57534e; color: #f5f5f4; padding: 0.4rem 0.6rem; border-radius: 0.375rem; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- ECRAN DE CONNEXION -->
+  <div id="auth-screen" class="flex-1 flex items-center justify-center p-4">
+    <div class="card max-w-md w-full space-y-4">
+      <h1 class="text-2xl font-bold text-amber-500 text-center">Fables d'Automne</h1>
+      <p class="text-sm text-stone-400 text-center">Connectez-vous pour accéder à vos personnages et à la table.</p>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs text-stone-400 mb-1">Email (ou pseudo@fables.local)</label>
+          <input id="auth-email" type="email" class="w-full" placeholder="joueur@exemple.fr" />
+        </div>
+        <div>
+          <label class="block text-xs text-stone-400 mb-1">Mot de passe (6 caractères min.)</label>
+          <input id="auth-password" type="password" class="w-full" placeholder="••••••" />
+        </div>
+        <div class="flex gap-2 pt-2">
+          <button onclick="signIn()" class="btn btn-primary flex-1">Se connecter</button>
+          <button onclick="signUp()" class="btn btn-secondary flex-1">Créer un compte</button>
+        </div>
+        <p id="auth-msg" class="text-xs text-center text-amber-400"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- APPLICATION PRINCIPALE -->
+  <div id="app-screen" class="hidden flex-1 flex flex-col">
+    <!-- BARRE DE NAVIGATION -->
+    <header class="bg-stone-900 border-b border-stone-700 px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+      <div class="flex items-center gap-4">
+        <span class="font-bold text-amber-500 text-lg">Fables d'Automne</span>
+        <nav class="flex gap-1">
+          <button onclick="switchTab('scene')" id="tab-btn-scene" class="btn btn-primary text-sm">Scène & Tests</button>
+          <button onclick="switchTab('combat')" id="tab-btn-combat" class="btn btn-secondary text-sm">Combat</button>
+          <button onclick="switchTab('chars')" id="tab-btn-chars" class="btn btn-secondary text-sm">Personnages</button>
+          <button onclick="switchTab('create')" id="tab-btn-create" class="btn btn-secondary text-sm">+ Créer</button>
+        </nav>
+      </div>
+      <div class="flex items-center gap-3 text-xs text-stone-400">
+        <span id="user-display"></span>
+        <button onclick="signOut()" class="btn btn-secondary text-xs">Déconnexion</button>
+      </div>
+    </header>
+
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 space-y-6">
+
+      <!-- ONGLET 1 : SCENE & TESTS -->
+      <section id="tab-scene" class="space-y-4">
+        <!-- Conditions générales -->
+        <div class="card">
+          <h2 class="text-lg font-bold text-amber-400 mb-3">Conditions générales de la scène (Partagées)</h2>
+          <div class="grid grid-cols-1 md:grid-cols-5 gap-3 text-sm">
+            <div>
+              <label class="block text-xs text-stone-400 mb-1">Milieu (Adaptation)</label>
+              <select id="scene-env" onchange="updateScene()" class="w-full"></select>
+            </div>
+            <div>
+              <label class="block text-xs text-stone-400 mb-1">Terrain</label>
+              <select id="scene-terrain" onchange="updateScene()" class="w-full"></select>
+            </div>
+            <div>
+              <label class="block text-xs text-stone-400 mb-1">Obstacles</label>
+              <select id="scene-obstacle" onchange="updateScene()" class="w-full"></select>
+            </div>
+            <div>
+              <label class="block text-xs text-stone-400 mb-1">Bruit ambiant</label>
+              <select id="scene-noise" onchange="updateScene()" class="w-full"></select>
+            </div>
+            <div>
+              <label class="block text-xs text-stone-400 mb-1">Luminosité</label>
+              <select id="scene-light" onchange="updateScene()" class="w-full"></select>
+            </div>
+          </div>
+          <p id="scene-cover-summary" class="text-xs text-stone-400 mt-2"></p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <!-- Lanceur de tests -->
+          <div class="card lg:col-span-2 space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <h2 class="text-lg font-bold text-amber-400">Tests de compétences & caractéristiques</h2>
+              <select id="active-char-select" onchange="renderSkillButtons()" class="text-sm font-semibold"></select>
+            </div>
+            <div id="active-char-status" class="text-xs text-stone-300 bg-stone-900 p-2 rounded"></div>
+            <div>
+              <h3 class="text-xs uppercase tracking-wider text-stone-400 mb-2">Caractéristiques pur (3d6 + Mod)</h3>
+              <div id="carac-buttons" class="grid grid-cols-2 sm:grid-cols-3 gap-2"></div>
+            </div>
+            <div>
+              <h3 class="text-xs uppercase tracking-wider text-stone-400 mb-2">Compétences (3d6 + Mod + Talents + États + Couverture)</h3>
+              <div id="skill-buttons" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2"></div>
+            </div>
+          </div>
+
+          <!-- Historique -->
+          <div class="card flex flex-col h-[560px]">
+            <h2 class="text-lg font-bold text-amber-400 mb-2">Historique des tests</h2>
+            <div id="roll-history-list" class="flex-1 overflow-y-auto space-y-2 text-xs pr-1"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ONGLET 2 : COMBAT -->
+      <section id="tab-combat" class="hidden space-y-4">
+        <div class="card flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 class="text-lg font-bold text-amber-400">Gestionnaire de Combat</h2>
+            <p id="combat-status-label" class="text-sm text-stone-300">Aucun combat en cours.</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <select id="combat-type-select" class="text-sm">
+              <option value="classique">Combat classique (2 phases, 1D20)</option>
+              <option value="duel">Duel (2 phases, 1D12)</option>
+              <option value="escarmouche">Escarmouche (1 phase, 1D20)</option>
+            </select>
+            <button onclick="initCombat()" class="btn btn-primary text-sm">Nouveau combat</button>
+            <button onclick="advanceCombatPhase()" id="btn-next-phase" class="btn btn-secondary text-sm hidden">Passer en Phase Finale</button>
+            <button onclick="endCombat()" class="btn btn-danger text-sm">Terminer / Réinitialiser</button>
+          </div>
+        </div>
+
+        <!-- Ajout de personnage au combat -->
+        <div id="combat-controls" class="card hidden space-y-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-sm font-semibold">Ajouter mon personnage :</span>
+            <select id="combat-add-char" class="text-sm"></select>
+            <button onclick="addToCombat('A')" class="btn btn-primary text-sm">+ Camp A (Alliés)</button>
+            <button onclick="addToCombat('B')" class="btn btn-danger text-sm">+ Camp B (Adversaires)</button>
+          </div>
+        </div>
+
+        <!-- Résultats des phases -->
+        <div id="combat-results-box" class="hidden card bg-stone-900 border-amber-600 space-y-2"></div>
+
+        <!-- Les deux camps -->
+        <div id="combat-camps" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="card border-amber-700/50 space-y-3">
+            <div class="flex items-center justify-between">
+              <h3 class="text-lg font-bold text-amber-400">Camp A</h3>
+              <button id="btn-roll-A" onclick="rollCampCombat('A')" class="btn btn-primary text-sm">Lancer le dé du Camp A</button>
+            </div>
+            <div id="camp-a-list" class="space-y-3"></div>
+          </div>
+          <div class="card border-red-800/50 space-y-3">
+            <div class="flex items-center justify-between">
+              <h3 class="text-lg font-bold text-red-400">Camp B</h3>
+              <button id="btn-roll-B" onclick="rollCampCombat('B')" class="btn btn-danger text-sm">Lancer le dé du Camp B</button>
+            </div>
+            <div id="camp-b-list" class="space-y-3"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ONGLET 3 : PERSONNAGES -->
+      <section id="tab-chars" class="hidden space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h2 class="text-xl font-bold text-amber-400">Personnages de la table</h2>
+          <select id="sheet-char-select" onchange="renderCharacterSheet()" class="text-sm font-semibold"></select>
+        </div>
+        <div id="character-sheet-container"></div>
+      </section>
+
+      <!-- ONGLET 4 : CREATION -->
+      <section id="tab-create" class="hidden space-y-4">
+Création guidée d'un personnage (Niveau 1)
+Nom du personnage *
+Désir fondamental
+1. Caractéristiques de base (Base 8, max 12 avant bonus)
+Points restants : 14
+
+
+2. Peuple
+
+
+
+
+
+3. Culture
+
+
+
+
+4. Classe (Choisissez 4 talents éligibles)
+
+
+Créer le personnage
+
+// ============================================================================
+// CONFIGURATION SUPABASE (REMPLACEZ LES 2 VALEURS CI-DESSOUS PAR LES VÔTRES)
+// ============================================================================
+const SUPABASE_URL = "COLLEZ_VOTRE_PROJECT_URL_ICI";
+const SUPABASE_KEY = "COLLEZ_VOTRE_PUBLISHABLE_KEY_ICI";
+// ============================================================================
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let RULES = null;
+let CURRENT_USER = null;
+let CHARACTERS = [];
+let SCENE = null;
+let COMBAT = null;
+let ROLLS = [];
+// --- INITIALISATION & AUTHENTIFICATION ---
+async function init() {
+const { data: { session } } = await sb.auth.getSession();
+if (session) {
+CURRENT_USER = session.user;
+await bootApp();
+}
+}
+async function signIn() {
+const email = document.getElementById('auth-email').value.trim();
+const password = document.getElementById('auth-password').value;
+const { data, error } = await sb.auth.signInWithPassword({ email, password });
+if (error) return document.getElementById('auth-msg').textContent = "Erreur : " + error.message;
+CURRENT_USER = data.user;
+await bootApp();
+}
+async function signUp() {
+const email = document.getElementById('auth-email').value.trim();
+const password = document.getElementById('auth-password').value;
+const { data, error } = await sb.auth.signUp({ email, password });
+if (error) return document.getElementById('auth-msg').textContent = "Erreur : " + error.message;
+if (data.user) {
+CURRENT_USER = data.user;
+await bootApp();
+}
+}
+async function signOut() {
+await sb.auth.signOut();
+location.reload();
+}
+async function bootApp() {
+document.getElementById('auth-screen').classList.add('hidden');
+document.getElementById('app-screen').classList.remove('hidden');
+document.getElementById('user-display').textContent = CURRENT_USER.email;
+// Charger les règles protégées depuis Supabase
+const { data: ruleRow, error } = await sb.from('game_rules').select('rules').eq('id', 1).single();
+if (error || !ruleRow) {
+alert("Impossible de charger les règles depuis Supabase. Vérifiez la table game_rules.");
+return;
+}
+RULES = ruleRow.rules;
+initCreationForm();
+initSceneSelectors();
+await refreshAllData();
+subscribeRealtime();
+}
+async function refreshAllData() {
+const [charsRes, sceneRes, rollsRes, combatRes] = await Promise.all([
+sb.from('characters').select('').order('created_at', { ascending: true }),
+sb.from('scene_state').select('').eq('id', 1).single(),
+sb.from('roll_history').select('').order('created_at', { ascending: false }).limit(40),
+sb.from('combat_state').select('').eq('id', 1).single()
+]);
+CHARACTERS = charsRes.data || [];
+SCENE = sceneRes.data || { environment: 'Normal', cover_terrain: 'Aucun', cover_obstacle: 'Aucun', cover_noise: 'Normal', cover_light: 'Normale' };
+ROLLS = rollsRes.data || [];
+COMBAT = combatRes.data || { status: 'inactif', participants: [] };
+syncSceneUI();
+syncCharacterDropdowns();
+renderSkillButtons();
+renderRollHistory();
+renderCharacterSheet();
+renderCombat();
+}
+function subscribeRealtime() {
+sb.channel('table-changes')
+.on('postgres_changes', { event: '', schema: 'public', table: 'characters' }, refreshAllData)
+.on('postgres_changes', { event: '', schema: 'public', table: 'scene_state' }, refreshAllData)
+.on('postgres_changes', { event: '', schema: 'public', table: 'roll_history' }, refreshAllData)
+.on('postgres_changes', { event: '', schema: 'public', table: 'combat_state' }, refreshAllData)
+.subscribe();
+}
+function switchTab(tab) {
+['scene', 'combat', 'chars', 'create'].forEach(t => {
+document.getElementById('tab-' + t).classList.toggle('hidden', t !== tab);
+document.getElementById('tab-btn-' + t).className = (t === tab) ? 'btn btn-primary text-sm' : 'btn btn-secondary text-sm';
+});
+}
+// --- UTILITAIRES DE CALCUL DE PERSONNAGE ---
+function getEffectiveState(char) {
+const d = char.data;
+const effLvl = char.effective_level || char.level;
+const caracs = { ...d.base_caracs };
+if (d.peuple_carac) caracs[d.peuple_carac] = (caracs[d.peuple_carac] || 8) + 1;
+if (d.culture_carac) caracs[d.culture_carac] = (caracs[d.culture_carac] || 8) + 1;
+// Bonus de caractéristiques liés aux paliers de niveau (5, 10, 15...)
+const lvlUpCaracs = d.level_caracs || {};
+Object.keys(lvlUpCaracs).forEach(lvl => {
+if (parseInt(lvl) <= effLvl && lvlUpCaracs[lvl]) {
+caracs[lvlUpCaracs[lvl]] = (caracs[lvlUpCaracs[lvl]] || 8) + 1;
+}
+});
+// Talents actifs jusqu'au niveau effectif
+let talents = [...(d.talents_lvl1 || [])];
+const lvlUpTalents = d.level_talents || {};
+Object.keys(lvlUpTalents).forEach(lvl => {
+if (parseInt(lvl) <= effLvl) {
+talents = talents.concat(lvlUpTalents[lvl] || []);
+}
+});
+// Malus de blessure le plus élevé & membre inutilisable
+const blessures = d.blessures || {};
+let maxWoundMalus = 0;
+let limbDisabled = false;
+Object.values(blessures).forEach(b => {
+if (b && b.gravite > 0) {
+if (b.gravite === 1) maxWoundMalus = Math.max(maxWoundMalus, 1);
+if (b.gravite === 2) maxWoundMalus = Math.max(maxWoundMalus, 2);
+if (b.gravite === 3) maxWoundMalus = Math.max(maxWoundMalus, 4);
+if (b.gravite === 4) maxWoundMalus = Math.max(maxWoundMalus, 6);
+if (b.gravite >= 5) { maxWoundMalus = Math.max(maxWoundMalus, 6); limbDisabled = true; }
+}
+});
+// Equipement porté et poids
+const inv = d.inventaire || [];
+const worn = d.worn || {};
+let totalWeight = 0;
+inv.forEach(item => { totalWeight += (item.poids || 0); });
+let armorDef = 0;
+let rawArmorMalusAgi = 0;
+['Tete', 'Torse', 'Bassin', 'BrasDroit', 'BrasGauche', 'Jambes'].forEach(slot => {
+const idx = worn[slot];
+if (idx !== undefined && idx !== null && inv[idx]) {
+armorDef += (inv[idx].def || 0);
+rawArmorMalusAgi += (inv[idx].malus_agi || 0);
+}
+});
+let armorMalusAgi = Math.floor(rawArmorMalusAgi);
+if (talents.includes('Entraînement aux armures légères')) armorMalusAgi = Math.max(0, armorMalusAgi - 2);
+if (talents.includes('Entraînement aux armures lourdes')) armorMalusAgi = Math.max(0, armorMalusAgi - 2);
+let maxWeight = caracs['Force'] * 2;
+if (talents.includes('Transport')) maxWeight += 8;
+if (talents.includes('Chargement')) maxWeight += 8;
+const encumbered = totalWeight > maxWeight;
+const emotionObj = RULES.emotions.find(e => e.nom === (d.emotion || 'Aucune')) || { comp: 0, att: 0, def: 0 };
+const fatigue = d.fatigue || 0;
+return { caracs, talents, maxWoundMalus, limbDisabled, totalWeight, maxWeight, encumbered, armorDef, armorMalusAgi, emotionObj, fatigue, worn, inv, blessures };
+}
+function getCoverTotals() {
+const t = RULES.couverture.terrain.find(x => x.nom === SCENE.cover_terrain) || { malus: 0, bonus: 0 };
+const o = RULES.couverture.obstacles.find(x => x.nom === SCENE.cover_obstacle) || { malus: 0, bonus: 0 };
+const n = RULES.couverture.bruit.find(x => x.nom === SCENE.cover_noise) || { malus: 0, bonus: 0 };
+const l = RULES.couverture.luminosite.find(x => x.nom === SCENE.cover_light) || { malus: 0, bonus: 0 };
+return {
+malus: t.malus + o.malus + n.malus + l.malus,
+bonus: t.bonus + o.bonus + n.bonus + l.bonus,
+lightMalus: l.malus
+};
+}
+// --- SCENE & JETS DE DES ---
+function initSceneSelectors() {
+const fill = (id, list) => {
+const el = document.getElementById(id);
+el.innerHTML = list.map(x => <option value="${x.nom || x}">${x.nom || x}</option>).join('');
+};
+fill('scene-env', RULES.milieux);
+fill('scene-terrain', RULES.couverture.terrain);
+fill('scene-obstacle', RULES.couverture.obstacles);
+fill('scene-noise', RULES.couverture.bruit);
+fill('scene-light', RULES.couverture.luminosite);
+}
+function syncSceneUI() {
+if (!SCENE) return;
+document.getElementById('scene-env').value = SCENE.environment;
+document.getElementById('scene-terrain').value = SCENE.cover_terrain;
+document.getElementById('scene-obstacle').value = SCENE.cover_obstacle;
+document.getElementById('scene-noise').value = SCENE.cover_noise;
+document.getElementById('scene-light').value = SCENE.cover_light;
+const cov = getCoverTotals();
+document.getElementById('scene-cover-summary').textContent = Couverture globale : Malus ${cov.malus} / Bonus +${cov.bonus} | Milieu : ${SCENE.environment};
+}
+async function updateScene() {
+await sb.from('scene_state').update({
+environment: document.getElementById('scene-env').value,
+cover_terrain: document.getElementById('scene-terrain').value,
+cover_obstacle: document.getElementById('scene-obstacle').value,
+cover_noise: document.getElementById('scene-noise').value,
+cover_light: document.getElementById('scene-light').value
+}).eq('id', 1);
+}
+function syncCharacterDropdowns() {
+const myChars = CHARACTERS.filter(c => c.owner_id === CURRENT_USER.id);
+const activeSel = document.getElementById('active-char-select');
+const prevActive = activeSel.value;
+activeSel.innerHTML = myChars.map(c => <option value="${c.id}">${c.name} (Niv.${c.effective_level}) ${c.is_public ? '' : '[Masqué]'}</option>).join('');
+if (myChars.some(c => c.id === prevActive)) activeSel.value = prevActive;
+const sheetSel = document.getElementById('sheet-char-select');
+const prevSheet = sheetSel.value;
+sheetSel.innerHTML = CHARACTERS.map(c => <option value="${c.id}">${c.name} (Niv.${c.effective_level}) — ${c.owner_id === CURRENT_USER.id ? 'Moi' : (c.owner_email || 'Joueur')}</option>).join('');
+if (CHARACTERS.some(c => c.id === prevSheet)) sheetSel.value = prevSheet;
+const combatSel = document.getElementById('combat-add-char');
+combatSel.innerHTML = myChars.map(c => <option value="${c.id}">${c.name}</option>).join('');
+}
+function renderSkillButtons() {
+const charId = document.getElementById('active-char-select').value;
+const char = CHARACTERS.find(c => c.id === charId);
+const statusDiv = document.getElementById('active-char-status');
+const caracDiv = document.getElementById('carac-buttons');
+const skillDiv = document.getElementById('skill-buttons');
+if (!char) {
+statusDiv.textContent = "Créez d'abord un personnage dans l'onglet '+ Créer'.";
+caracDiv.innerHTML = '';
+skillDiv.innerHTML = '';
+return;
+}
+const st = getEffectiveState(char);
+statusDiv.innerHTML = Fatigue : <b>${st.fatigue}</b> | Émotion : <b>${char.data.emotion || 'Aucune'}</b> | Malus blessure : <b>-${st.maxWoundMalus}</b> | Malus armure Agi : <b>-${st.armorMalusAgi}</b> ${st.encumbered ? '<span class="text-red-400 font-bold">| ENCOMBRÉ !</span>' : ''};
+caracDiv.innerHTML = RULES.caracteristiques.map(cName => {
+const mod = (st.caracs[cName] || 10) - 10;
+return <button onclick="rollTest('${cName}', true)" class="btn btn-secondary text-left flex justify-between items-center text-xs"> <span>${cName}</span><span class="font-bold text-amber-400">${mod >= 0 ? '+'+mod : mod}</span> </button>;
+}).join('');
+skillDiv.innerHTML = RULES.competences.map(comp => {
+const mod = computeSkillModifier(char, st, comp).total;
+return <button onclick="rollTest('${comp.nom}', false)" class="btn btn-secondary text-left flex justify-between items-center text-xs"> <span class="truncate">${comp.nom}</span><span class="font-bold text-amber-400 ml-1">${mod >= 0 ? '+'+mod : mod}</span> </button>;
+}).join('');
+}
+function computeSkillModifier(char, st, comp) {
+let parts = [];
+const baseMod = (st.caracs[comp.carac] || 10) - 10;
+let total = baseMod;
+parts.push(${comp.carac} ${baseMod >= 0 ? '+'+baseMod : baseMod});
+// Bonus des talents
+st.talents.forEach(tName => {
+const tObj = RULES.talents.find(x => x.nom === tName);
+if (tObj && tObj.comp_bonus && tObj.comp_bonus[comp.nom]) {
+total += tObj.comp_bonus[comp.nom];
+parts.push(${tName} +${tObj.comp_bonus[comp.nom]});
+}
+});
+// Talent Adaptation
+if (st.talents.includes('Adaptation') && char.data.adaptation_milieu === SCENE.environment) {
+if (['Déplacement', 'Détection', 'Discrétion', 'Equilibre', 'Chasse', 'Orientation'].includes(comp.nom)) {
+total += 1;
+parts.push(Adaptation +1);
+}
+}
+// Fatigue (sauf Résistance)
+if (comp.nom !== 'Résistance' && st.fatigue > 0) {
+total -= st.fatigue;
+parts.push(Fatigue -${st.fatigue});
+}
+// Emotion
+if (st.emotionObj.comp !== 0) {
+total += st.emotionObj.comp;
+parts.push(Émotion ${st.emotionObj.comp >= 0 ? '+'+st.emotionObj.comp : st.emotionObj.comp});
+}
+// Blessure (Force ou Agilité)
+if (['Force', 'Agilité'].includes(comp.carac) && st.maxWoundMalus > 0) {
+total -= st.maxWoundMalus;
+parts.push(Blessure -${st.maxWoundMalus});
+}
+// Malus armure (Agilité)
+if (comp.carac === 'Agilité' && st.armorMalusAgi > 0) {
+total -= st.armorMalusAgi;
+parts.push(Armure -${st.armorMalusAgi});
+}
+// Couverture
+const cov = getCoverTotals();
+if (comp.couverture === 'malus' && cov.malus !== 0) {
+let cMalus = cov.malus;
+if (st.talents.includes('Nyctalopie') && SCENE.cover_light === 'Obscurité relative') cMalus += 1;
+if (st.talents.includes('Filature') && comp.nom === 'Détection' && SCENE.environment === 'Urbain') cMalus = 0;
+if (cMalus !== 0) {
+total += cMalus;
+parts.push(Couverture ${cMalus});
+}
+} else if (comp.couverture === 'bonus' && cov.bonus !== 0) {
+total += cov.bonus;
+parts.push(Couverture +${cov.bonus});
+}
+return { total, parts };
+}
+async function rollTest(name, isCarac) {
+const charId = document.getElementById('active-char-select').value;
+const char = CHARACTERS.find(c => c.id === charId);
+if (!char) return;
+const st = getEffectiveState(char);
+const d1 = Math.floor(Math.random() * 6) + 1;
+const d2 = Math.floor(Math.random() * 6) + 1;
+const d3 = Math.floor(Math.random() * 6) + 1;
+const diceSum = d1 + d2 + d3;
+let mod = 0;
+let details = 3d6 (${d1}+${d2}+${d3}=${diceSum});
+if (isCarac) {
+mod = (st.caracs[name] || 10) - 10;
+if (st.fatigue > 0) { mod -= st.fatigue; }
+if (['Force', 'Agilité'].includes(name) && st.maxWoundMalus > 0) { mod -= st.maxWoundMalus; }
+details +=  | Mod ${mod >= 0 ? '+'+mod : mod};
+} else {
+const comp = RULES.competences.find(c => c.nom === name);
+const res = computeSkillModifier(char, st, comp);
+mod = res.total;
+details +=  | ${res.parts.join(', ')};
+}
+const total = diceSum + mod;
+await sb.from('roll_history').insert({
+character_id: char.id,
+owner_id: CURRENT_USER.id,
+character_name: char.name,
+is_public: char.is_public,
+skill_name: name,
+total: total,
+details: details
+});
+}
+function renderRollHistory() {
+const list = document.getElementById('roll-history-list');
+list.innerHTML = ROLLS.map(r => <div class="bg-stone-900 p-2 rounded border ${r.is_public ? 'border-stone-700' : 'border-amber-700'}"> <div class="flex justify-between font-bold"> <span class="text-amber-400">${r.character_name} ${r.is_public ? '' : '🔒'} — ${r.skill_name}</span> <span class="text-base text-white">${r.total}</span> </div> <div class="text-stone-400 mt-0.5">${r.details}</div> </div>).join('');
+}
+// --- CREATION DE PERSONNAGE ---
+function initCreationForm() {
+document.getElementById('c-desire').innerHTML = RULES.desirs.map(d => <option value="${d}">${d}</option>).join('');
+document.getElementById('c-peuple').innerHTML = RULES.peuples.map(p => <option value="${p.nom}">${p.nom}</option>).join('');
+document.getElementById('c-culture').innerHTML = RULES.cultures.map(c => <option value="${c.nom}">${c.nom}</option>).join('');
+document.getElementById('c-classe').innerHTML = RULES.classes.map(c => <option value="${c.nom}">${c.nom}</option>).join('');
+document.getElementById('c-caracs-grid').innerHTML = RULES.caracteristiques.map(c => <div class="bg-stone-900 p-2 rounded text-center"> <div class="text-xs text-stone-400">${c}</div> <div class="flex items-center justify-center gap-2 mt-1"> <button onclick="changeCreateCarac('${c}', -1)" class="btn btn-secondary px-2 py-0.5 text-xs">-</button> <span id="cc-${c}" class="font-bold text-lg">8</span> <button onclick="changeCreateCarac('${c}', 1)" class="btn btn-secondary px-2 py-0.5 text-xs">+</button> </div> </div>).join('');
+updateCreationChoices();
+}
+let CREATE_CARACS = { Force: 8, Agilité: 8, Santé: 8, Connaissance: 8, Perception: 8, Présence: 8 };
+function changeCreateCarac(c, delta) {
+const used = Object.values(CREATE_CARACS).reduce((a, b) => a + (b - 8), 0);
+if (delta > 0 && (used >= 14 || CREATE_CARACS[c] >= 12)) return;
+if (delta < 0 && CREATE_CARACS[c] <= 8) return;
+CREATE_CARACS[c] += delta;
+document.getElementById('cc-' + c).textContent = CREATE_CARACS[c];
+document.getElementById('c-points-left').textContent = Points restants : ${14 - (used + delta)};
+updateCreationTalents();
+}
+function getCreationTempCaracs() {
+const res = { ...CREATE_CARACS };
+const pc = document.getElementById('c-peuple-carac').value;
+const cc = document.getElementById('c-culture-carac').value;
+if (pc) res[pc] += 1;
+if (cc) res[cc] += 1;
+return res;
+}
+function isTalentEligible(talentName, caracs, acquiredTalents) {
+const t = RULES.talents.find(x => x.nom === talentName);
+if (!t) return false;
+if (t.niveau_min && t.niveau_min > 1) return false;
+if (!t.cumulable && acquiredTalents.includes(talentName)) return false;
+for (const [c, minVal] of Object.entries(t.caracs || {})) {
+if ((caracs[c] || 0) < minVal) return false;
+}
+for (const reqT of (t.talents || [])) {
+if (!acquiredTalents.includes(reqT)) return false;
+}
+return true;
+}
+function updateCreationChoices() {
+const pObj = RULES.peuples.find(p => p.nom === document.getElementById('c-peuple').value);
+document.getElementById('c-peuple-carac').innerHTML = pObj.caracs.map(c => <option value="${c}">Bonus Peuple : +1 ${c}</option>).join('');
+const cObj = RULES.cultures.find(c => c.nom === document.getElementById('c-culture').value);
+document.getElementById('c-culture-carac').innerHTML = cObj.caracs.map(c => <option value="${c}">Bonus Culture : +1 ${c}</option>).join('');
+updateCreationTalents();
+}
+function updateCreationTalents() {
+const caracs = getCreationTempCaracs();
+const pObj = RULES.peuples.find(p => p.nom === document.getElementById('c-peuple').value);
+const cObj = RULES.cultures.find(c => c.nom === document.getElementById('c-culture').value);
+const clObj = RULES.classes.find(c => c.nom === document.getElementById('c-classe').value);
+const pSel = document.getElementById('c-peuple-talent');
+const prevP = pSel.value;
+pSel.innerHTML = pObj.talents.map(tName => {
+const ok = isTalentEligible(tName, caracs, []);
+return <option value="${tName}" ${ok ? '' : 'disabled'}>Talent Peuple : ${tName} ${ok ? '' : '(Prérequis non remplis)'}</option>;
+}).join('');
+if (pObj.talents.includes(prevP)) pSel.value = prevP;
+const acquired1 = pSel.value && isTalentEligible(pSel.value, caracs, []) ? [pSel.value] : [];
+const cSel = document.getElementById('c-culture-talent');
+const prevC = cSel.value;
+cSel.innerHTML = cObj.talents.map(tName => {
+const ok = isTalentEligible(tName, caracs, acquired1);
+return <option value="${tName}" ${ok ? '' : 'disabled'}>Talent Culture : ${tName} ${ok ? '' : '(Prérequis non remplis)'}</option>;
+}).join('');
+if (cObj.talents.includes(prevC)) cSel.value = prevC;
+const acquired2 = [...acquired1];
+if (cSel.value && isTalentEligible(cSel.value, caracs, acquired1)) acquired2.push(cSel.value);
+const clDiv = document.getElementById('c-classe-talents');
+clDiv.innerHTML = clObj.talents.map(tName => {
+const ok = isTalentEligible(tName, caracs, acquired2);
+const tInfo = RULES.talents.find(x => x.nom === tName);
+return <label class="flex items-start gap-2 p-2 rounded bg-stone-900 border ${ok ? 'border-stone-700 cursor-pointer' : 'border-red-900/40 opacity-50'}"> <input type="checkbox" name="c-cl-talent" value="${tName}" ${ok ? '' : 'disabled'} onchange="limitClassTalents()" class="mt-1" /> <div class="text-xs"> <div class="font-bold text-stone-200">${tName}</div> <div class="text-stone-400">${tInfo ? tInfo.effet : ''}</div> </div> </label>;
+}).join('');
+}
+function limitClassTalents() {
+const checked = document.querySelectorAll('input[name="c-cl-talent"]:checked');
+if (checked.length > 4) {
+checked[checked.length - 1].checked = false;
+alert("Vous ne pouvez choisir que 4 talents de classe.");
+}
+}
+async function saveNewCharacter() {
+const name = document.getElementById('c-name').value.trim();
+if (!name) return alert("Veuillez saisir un nom de personnage.");
+const used = Object.values(CREATE_CARACS).reduce((a, b) => a + (b - 8), 0);
+if (used !== 14) return alert("Vous devez répartir exactement les 14 points de caractéristiques.");
+const pTalent = document.getElementById('c-peuple-talent').value;
+const cTalent = document.getElementById('c-culture-talent').value;
+const clTalents = Array.from(document.querySelectorAll('input[name="c-cl-talent"]:checked')).map(x => x.value);
+if (clTalents.length !== 4) return alert("Veuillez sélectionner exactement 4 talents de classe.");
+const charData = {
+desir: document.getElementById('c-desire').value,
+peuple: document.getElementById('c-peuple').value,
+peuple_carac: document.getElementById('c-peuple-carac').value,
+culture: document.getElementById('c-culture').value,
+culture_carac: document.getElementById('c-culture-carac').value,
+classe: document.getElementById('c-classe').value,
+base_caracs: { ...CREATE_CARACS },
+talents_lvl1: [pTalent, cTalent, ...clTalents],
+adaptation_milieu: "Forêt",
+level_caracs: {},
+level_talents: {},
+inventaire: [{ nom: "Poings", categorie: "Arme", famille: "Lutte", mains: 1, poids: 0, force_min: 5, degat: 0, portee: 0 }],
+worn: { MainPrincipale: 0 },
+blessures: {},
+fatigue: 0,
+emotion: "Aucune"
+};
+const { error } = await sb.from('characters').insert({
+owner_id: CURRENT_USER.id,
+owner_email: CURRENT_USER.email,
+name: name,
+is_public: document.getElementById('c-public').checked,
+level: 1,
+effective_level: 1,
+data: charData
+});
+if (error) return alert("Erreur : " + error.message);
+alert("Personnage créé avec succès !");
+switchTab('chars');
+}
+// --- FICHE DE PERSONNAGE & GESTION ---
+function renderCharacterSheet() {
+const charId = document.getElementById('sheet-char-select').value;
+const char = CHARACTERS.find(c => c.id === charId);
+const container = document.getElementById('character-sheet-container');
+if (!char) return container.innerHTML = "Aucun personnage sélectionné.";
+const isOwner = char.owner_id === CURRENT_USER.id;
+const st = getEffectiveState(char);
+let levelOptions = '';
+for (let i = 1; i <= char.level; i++) {
+levelOptions += <option value="${i}" ${char.effective_level === i ? 'selected' : ''}>Niveau effectif : ${i}</option>;
+}
+container.innerHTML = `
+${char.name} ${char.is_public ? '' : 'Masqué'}
+${char.data.peuple} • ${char.data.culture} • ${char.data.classe} • Désir : ${char.data.desir}
+
+${isOwner ?  <div class="flex flex-wrap items-center gap-2 text-xs"> <span class="font-bold text-sm">Niveau réel : ${char.level}</span> <button onclick="changeLevel('${char.id}', 1)" class="btn btn-primary">+1 Niv</button> <button onclick="changeLevel('${char.id}', -1)" class="btn btn-secondary">-1 Niv</button> <select onchange="setEffectiveLevel('${char.id}', this.value)">${levelOptions}</select> <button onclick="togglePublic('${char.id}')" class="btn btn-secondary">${char.is_public ? 'Masquer aux autres' : 'Rendre public'}</button> <button onclick="transferCharacter('${char.id}')" class="btn btn-secondary">Transférer</button> <button onclick="deleteCharacter('${char.id}')" class="btn btn-danger">Supprimer</button> </div> : <span class="text-xs text-stone-400">Niveau effectif : ${char.effective_level} / ${char.level} (Lecture seule)</span>}
+${RULES.caracteristiques.map(c => {
+const val = st.caracs[c] || 10;
+const mod = val - 10;
+return <div class="card text-center py-2"> <div class="text-xs text-stone-400">${c}</div> <div class="text-xl font-bold">${val} <span class="text-sm text-amber-400">(${mod >= 0 ? '+'+mod : mod})</span></div> </div>;
+}).join('')}
+État psychologique, Fatigue & Repos
+
+Émotion active
+<select ${isOwner ? '' : 'disabled'} onchange="updateCharField('${char.id}', 'emotion', this.value)" class="w-full">
+${RULES.emotions.map(e => <option value="${e.nom}" ${char.data.emotion === e.nom ? 'selected' : ''}>${e.nom} (Comp ${e.comp}, Att ${e.att}, Déf ${e.def})</option>).join('')}
+
+
+Fatigue (Max Santé : ${st.caracs['Santé']})
+${isOwner ? <button onclick="changeFatigue('${char.id}', -1)" class="btn btn-secondary">-</button> : ''}
+${st.fatigue}
+${isOwner ? <button onclick="changeFatigue('${char.id}', 1)" class="btn btn-secondary">+</button> : ''}
+
+
+
+${isOwner ? `
+ Soin / Médecine réussi
+Repos court (2h)
+Repos long (10h)
+Test de Fièvre (D10)
+` : ''}
+Blessures localisées
+${isOwner ?  <div class="flex gap-1 text-xs"> <button onclick="rollWound('${char.id}', 'legere')" class="btn btn-secondary">+ Légère</button> <button onclick="rollWound('${char.id}', 'moyenne')" class="btn btn-secondary">+ Moyenne</button> <button onclick="rollWound('${char.id}', 'grave')" class="btn btn-danger">+ Grave</button> </div> : ''}
+
+
+${['Tête', 'Torse', 'Ventre/Bassin', 'Bras droit', 'Bras gauche', 'Jambe(s)'].map(loc => {
+const b = st.blessures[loc] || { gravite: 0, infectee: false, jours: 0 };
+return <div class="bg-stone-900 p-2 rounded flex items-center justify-between"> <div> <div class="font-bold">${loc} ${b.infectee ? '<span class="text-red-400">[Infectée]</span>' : ''}</div> <div class="text-stone-400">${b.gravite > 0 ? Gravité ${b.gravite} (${b.jours}j): 'Indemne'}</div> </div> ${isOwner ?
+
+
+${[0,1,2,3,4,5,6].map(g => <option value="${g}" ${b.gravite === g ? 'selected' : ''}>G${g}</option>).join('')}
+
+<input type="checkbox" title="Infectée" ${b.infectee ? 'checked' : ''} onchange="toggleWoundInfection('${char.id}', '${loc}', this.checked)" />
+ : ''} </div>;
+}).join('')}
+
+
+Équipement & Emplacements
+Poids : ${st.totalWeight} / ${st.maxWeight} kg
+
+${isOwner ? <div class="flex gap-2 text-xs"> <select id="add-eq-select-${char.id}" class="flex-1"> ${RULES.equipements.map((e, i) =>${e.nom} (${e.categorie}, ${e.poids}kg)).join('')} </select> <button onclick="addEquipment('${char.id}')" class="btn btn-primary">Ajouter</button> </div> : ''}
+
+${[
+{ key: 'MainPrincipale', label: 'Main principale', filter: e => e.categorie === 'Arme' },
+{ key: 'MainSecondaire', label: 'Main secondaire', filter: e => e.categorie === 'Arme' || e.categorie === 'Bouclier' },
+{ key: 'Tete', label: 'Tête', filter: e => e.slot === 'Tête' },
+{ key: 'Torse', label: 'Torse', filter: e => e.slot === 'Torse' },
+{ key: 'Bassin', label: 'Bassin', filter: e => e.slot === 'Bassin' },
+{ key: 'BrasDroit', label: 'Bras droit', filter: e => e.slot === 'Bras' },
+{ key: 'BrasGauche', label: 'Bras gauche', filter: e => e.slot === 'Bras' },
+{ key: 'Jambes', label: 'Jambes', filter: e => e.slot === 'Jambes' },
+{ key: 'Monture', label: 'Monture', filter: e => e.categorie === 'Monture' }
+].map(sl => {
+const mainItem = st.inv[st.worn['MainPrincipale']];
+const locked = sl.key === 'MainSecondaire' && mainItem && mainItem.mains === 2;
+return `
+${sl.label}
+<select ${(!isOwner || locked) ? 'disabled' : ''} onchange="equipSlot('${char.id}', '${sl.key}', this.value)" class="w-full text-xs">
+${locked ? '(Bloqué : arme 2 mains)' : '— Aucun —'}
+${st.inv.map((item, idx) => sl.filter(item) ? <option value="${idx}" ${st.worn[sl.key] === idx ? 'selected' : ''}>${item.nom}</option> : '').join('')}
+
+; }).join('')} </div> <div class="space-y-1 text-xs max-h-40 overflow-y-auto"> ${st.inv.map((item, idx) => 
+
+${item.nom} (${item.poids}kg)
+${isOwner && idx > 0 ? <button onclick="removeEquipment('${char.id}', ${idx})" class="text-red-400 hover:underline">Retirer</button> : ''}
+
+`).join('')}
+
+Talents actifs (${st.talents.length})
+${isOwner && st.talents.includes('Adaptation') ? <select onchange="updateCharField('${char.id}', 'adaptation_milieu', this.value)" class="text-xs"> ${['Forêt', 'Désert', 'Montagne', 'Froid', 'Chaleur', 'Mer'].map(m =><option value="${m}" ${char.data.adaptation_milieu === m ? 'selected' : ''}>Adaptation : ${m}).join('')} </select> : ''}
+
+
+${st.talents.map(tName => {
+const tObj = RULES.talents.find(x => x.nom === tName);
+return <div class="bg-stone-900 p-2 rounded"> <div class="font-bold text-amber-300">${tName}</div> <div class="text-stone-400">${tObj ? tObj.effet : ''}</div> </div>;
+}).join('')}
+
+
+
+
+`;
+}
+// --- ACTIONS DE GESTION DE FICHE ---
+async function updateCharData(charId, newData) {
+await sb.from('characters').update({ data: newData }).eq('id', charId);
+}
+async function updateCharField(charId, field, value) {
+const char = CHARACTERS.find(c => c.id === charId);
+const d = { ...char.data, [field]: value };
+await updateCharData(charId, d);
+}
+async function togglePublic(charId) {
+const char = CHARACTERS.find(c => c.id === charId);
+await sb.from('characters').update({ is_public: !char.is_public }).eq('id', charId);
+}
+async function deleteCharacter(charId) {
+if (!confirm("Supprimer définitivement ce personnage ?")) return;
+await sb.from('characters').delete().eq('id', charId);
+}
+async function transferCharacter(charId) {
+const email = prompt("Entrez l'adresse email du joueur qui recevra ce personnage :");
+if (!email) return;
+const target = CHARACTERS.find(c => c.owner_email && c.owner_email.toLowerCase() === email.trim().toLowerCase());
+if (!target) return alert("Cet utilisateur doit d'abord avoir créé au moins un personnage sur l'application pour être trouvé.");
+await sb.from('characters').update({ owner_id: target.owner_id, owner_email: target.owner_email }).eq('id', charId);
+alert("Personnage transféré !");
+}
+async function changeLevel(charId, delta) {
+const char = CHARACTERS.find(c => c.id === charId);
+const newLvl = char.level + delta;
+if (newLvl < 1 || newLvl > 30) return;
+const d = { ...char.data };
+if (delta > 0) {
+const st = getEffectiveState({ ...char, effective_level: char.level });
+// Tous les 5 niveaux : +1 caractéristique (différente de la précédente)
+if (newLvl % 5 === 0) {
+const prevC = d.level_caracs ? d.level_caracs[newLvl - 5] : null;
+const choiceC = prompt(Niveau ${newLvl} ! Choisissez une caractéristique à augmenter de +1 (${RULES.caracteristiques.filter(c => c !== prevC).join(', ')}) :);
+if (RULES.caracteristiques.includes(choiceC) && choiceC !== prevC) {
+d.level_caracs = { ...(d.level_caracs || {}), [newLvl]: choiceC };
+st.caracs[choiceC] += 1;
+} else {
+return alert("Caractéristique invalide ou identique au palier précédent.");
+}
+}
+// 2 talents communs éligibles
+const eligibleCommuns = RULES.talents.filter(t => t.type === 'commun' && isTalentEligible(t.nom, st.caracs, st.talents)).map(t => t.nom);
+const t1 = prompt(Niveau ${newLvl} — Talent 1/2 parmi les éligibles :\n${eligibleCommuns.join(', ')});
+if (!eligibleCommuns.includes(t1)) return alert("Talent 1 invalide ou prérequis non remplis.");
+const eligible2 = RULES.talents.filter(t => t.type === 'commun' && isTalentEligible(t.nom, st.caracs, [...st.talents, t1])).map(t => t.nom);
+const t2 = prompt(Niveau ${newLvl} — Talent 2/2 parmi les éligibles :\n${eligible2.join(', ')});
+if (!eligible2.includes(t2)) return alert("Talent 2 invalide ou prérequis non remplis.");
+const gained = [t1, t2];
+if ([15, 18, 21, 24, 27, 30].includes(newLvl)) {
+const epiques = RULES.talents.filter(t => t.type === 'epique' && !st.talents.includes(t.nom)).map(t => t.nom);
+const te = prompt(Palier Épique ! Choisissez 1 talent épique :\n${epiques.join(', ')});
+if (!epiques.includes(te)) return alert("Talent épique invalide.");
+gained.push(te);
+}
+d.level_talents = { ...(d.level_talents || {}), [newLvl]: gained };
+}
+await sb.from('characters').update({ level: newLvl, effective_level: newLvl, data: d }).eq('id', charId);
+}
+async function setEffectiveLevel(charId, lvl) {
+await sb.from('characters').update({ effective_level: parseInt(lvl) }).eq('id', charId);
+}
+async function changeFatigue(charId, delta) {
+const char = CHARACTERS.find(c => c.id === charId);
+const infectedCount = Object.values(char.data.blessures || {}).filter(b => b && b.infectee).length;
+const newFat = Math.max(infectedCount, (char.data.fatigue || 0) + delta);
+await updateCharField(charId, 'fatigue', newFat);
+}

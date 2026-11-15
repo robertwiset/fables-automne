@@ -685,7 +685,7 @@ function renderHealthBlock(char, st, container, isOwner) {
   wTop.appendChild(el('strong', '', 'Blessures localisées'));
   if (isOwner) {
     const wBtns = el('div', 'flex');
-    ['legere', 'moyenne', 'grave'].forEach(function(tp) {
+    new Array('legere', 'moyenne', 'grave').forEach(function(tp) {
       const b = el('button', 'bg-rose-700', '+ ' + tp);
       b.style.fontSize = '11px';
       b.onclick = function() { rollRandomWound(char.id, tp); };
@@ -696,7 +696,7 @@ function renderHealthBlock(char, st, container, isOwner) {
   container.appendChild(wTop);
 
   const wGrid = el('div', 'grid grid-cols-3');
-  ['Tête', 'Torse', 'Ventre/Bassin', 'Bras droit', 'Bras gauche', 'Jambe(s)'].forEach(function(loc) {
+  new Array('Tête', 'Torse', 'Ventre/Bassin', 'Bras droit', 'Bras gauche', 'Jambe(s)').forEach(function(loc) {
     const b = st.blessures[loc] || { gravite: 0, infectee: false, jours: 0 };
     const card = el('div', 'border ' + (b.gravite > 0 ? 'bg-rose-50' : 'bg-stone-50'));
     card.appendChild(el('strong', '', loc + (b.infectee ? ' [INFECTÉE]' : '')));
@@ -706,7 +706,7 @@ function renderHealthBlock(char, st, container, isOwner) {
     if (isOwner) {
       const gRow = el('div', 'flex');
       gRow.style.marginTop = '4px'; gRow.style.gap = '3px';
-      [0,1,2,3,4,5,6].forEach(function(g) {
+      new Array(0, 1, 2, 3, 4, 5, 6).forEach(function(g) {
         const gb = el('button', b.gravite === g ? 'bg-rose-800' : '', 'G' + g);
         gb.style.padding = '2px 5px'; gb.style.fontSize = '10px';
         gb.onclick = function() { setWoundLevel(char.id, loc, g); };
@@ -718,6 +718,7 @@ function renderHealthBlock(char, st, container, isOwner) {
   });
   container.appendChild(wGrid);
 }
+
 
 function toggleCreateForm() {
   const wrap = document.getElementById('create-form-wrapper');

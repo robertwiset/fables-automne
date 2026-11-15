@@ -1,4 +1,4 @@
-const SUPABASE_URL = "https://" + "tmfzrjeaknwvkdhsqmuu" + ".supabase.co";
+const SUPABASE_URL = "https://tmfzrjeaknwvkdhsqmuu.supabase.co";
 const SUPABASE_KEY = "sb_publishable_Zx28ISJOTOmc-Hkmdpj-iQ_dP6kHgCC";
 let AUTH_TOKEN = localStorage.getItem('fa_token') || null;
 let AUTH_USER = JSON.parse(localStorage.getItem('fa_user') || 'null');

@@ -655,13 +655,13 @@ function updateCreationTalents() {
     });
   }
 
-  const allAcquired = acquired2.concat(validChecked);
-  const clDiv = document.getElementById('c-classe-talents');
+    const clDiv = document.getElementById('c-classe-talents');
   clDiv.innerHTML = '';
   clObj.talents.forEach(function(tName) {
     const isChecked = validChecked.includes(tName);
-    const othersAcquired = allAcquired.filter(function(x) { return x !== tName; });
-    const ok = isChecked || isTalentEligible(tName, caracs, othersAcquired);
+    const othersChecked = validChecked.filter(function(x) { return x !== tName; });
+    const ok = isChecked || isTalentEligible(tName, caracs, acquired2.concat(othersChecked));
+
     const tInfo = RULES.talents.find(function(x) { return x.nom === tName; });
     const lbl = el('label', 'p-2 border rounded flex items-start gap-2 text-xs ' + (ok ? 'bg-white cursor-pointer' : 'bg-stone-100 opacity-50'));
     const chk = el('input', 'mt-0.5');

@@ -1499,11 +1499,11 @@ function renderLevelUpBox(char, container) {
   } else {
     LVL_DRAFT.spells = new Array();
   }
-const btnVal = el('button', 'bg-amber-800', 'Valider le passage au Niveau ' + nextLvl);
-btnVal.style.width = '100%';
-btnVal.onclick = function() { confirmLevelUp(char.id, nextLvl, hasCaracChoice, hasEpique, spellSlots.length); };
-box.appendChild(btnVal);
-container.appendChild(box);
+  const btnVal = el('button', 'bg-amber-800', 'Valider le passage au Niveau ' + nextLvl);
+  btnVal.style.width = '100%';
+  btnVal.onclick = function() { confirmLevelUp(char.id, nextLvl, hasCaracChoice, hasEpique, spellSlots.length); };
+  box.appendChild(btnVal);
+  container.appendChild(box);
 }
 
 

@@ -612,6 +612,8 @@ function updateCreationTalents() {
   const cObj = RULES.cultures.find(function(c) { return c.nom === document.getElementById('c-culture').value; });
   const clObj = RULES.classes.find(function(c) { return c.nom === document.getElementById('c-classe').value; });
 
+  const prevChecked = Array.from(document.querySelectorAll('input[name="c-cl-talent"]:checked')).map(function(x) { return x.value; });
+
   const pSel = document.getElementById('c-peuple-talent');
   const prevP = pSel.value;
   pSel.innerHTML = '';
@@ -639,18 +641,36 @@ function updateCreationTalents() {
   const acquired2 = acquired1.slice();
   if (cSel.value && isTalentEligible(cSel.value, caracs, acquired1)) acquired2.push(cSel.value);
 
+  let validChecked = [];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    prevChecked.forEach(function(tName) {
+      if (clObj.talents.includes(tName) && !validChecked.includes(tName)) {
+        if (isTalentEligible(tName, caracs, acquired2.concat(validChecked))) {
+          validChecked.push(tName);
+          changed = true;
+        }
+      }
+    });
+  }
+
+  const allAcquired = acquired2.concat(validChecked);
   const clDiv = document.getElementById('c-classe-talents');
   clDiv.innerHTML = '';
   clObj.talents.forEach(function(tName) {
-    const ok = isTalentEligible(tName, caracs, acquired2);
+    const isChecked = validChecked.includes(tName);
+    const othersAcquired = allAcquired.filter(function(x) { return x !== tName; });
+    const ok = isChecked || isTalentEligible(tName, caracs, othersAcquired);
     const tInfo = RULES.talents.find(function(x) { return x.nom === tName; });
     const lbl = el('label', 'p-2 border rounded flex items-start gap-2 text-xs ' + (ok ? 'bg-white cursor-pointer' : 'bg-stone-100 opacity-50'));
     const chk = el('input', 'mt-0.5');
     chk.type = 'checkbox';
     chk.name = 'c-cl-talent';
     chk.value = tName;
+    chk.checked = isChecked;
     chk.disabled = !ok;
-    chk.onchange = limitClassTalents;
+    chk.onchange = function() { onClassTalentToggle(chk); };
     const txt = el('div', '');
     txt.appendChild(el('div', 'font-bold', tName));
     txt.appendChild(el('div', 'text-stone-500', tInfo ? tInfo.effet : ''));
@@ -660,12 +680,14 @@ function updateCreationTalents() {
   });
 }
 
-function limitClassTalents() {
+function onClassTalentToggle(chk) {
   const checked = document.querySelectorAll('input[name="c-cl-talent"]:checked');
   if (checked.length > 4) {
-    checked[checked.length - 1].checked = false;
+    chk.checked = false;
     alert("Vous ne pouvez choisir que 4 talents de classe.");
+    return;
   }
+  updateCreationTalents();
 }
 
 async function saveNewCharacter() {

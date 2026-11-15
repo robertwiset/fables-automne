@@ -231,21 +231,35 @@ function getEffectiveState(char) {
     }
   });
 
-  let talents = (d.talents_lvl1 || []).slice();
+  let talents = (d.talents_lvl1 || new Array()).slice();
   const lvlUpTalents = d.level_talents || {};
   Object.keys(lvlUpTalents).forEach(function(lvl) {
     if (parseInt(lvl) <= effLvl) {
-      talents = talents.concat(lvlUpTalents[lvl] || []);
+      talents = talents.concat(lvlUpTalents[lvl] || new Array());
     }
   });
 
-  let sorts = (d.sorts || []).slice();
+  let sorts = (d.sorts || new Array()).slice();
   const lvlUpSorts = d.level_sorts || {};
   Object.keys(lvlUpSorts).forEach(function(lvl) {
     if (parseInt(lvl) <= effLvl) {
-      sorts = sorts.concat(lvlUpSorts[lvl] || []);
+      sorts = sorts.concat(lvlUpSorts[lvl] || new Array());
     }
   });
+
+  let talentChoices = Object.assign({}, d.talent_choices_lvl1 || {});
+  const lvlUpChoices = d.level_talent_choices || {};
+  Object.keys(lvlUpChoices).forEach(function(lvl) {
+    if (parseInt(lvl) <= effLvl) {
+      Object.keys(lvlUpChoices[lvl] || {}).forEach(function(tKey) {
+        talentChoices[tKey] = (talentChoices[tKey] || new Array()).concat(lvlUpChoices[lvl][tKey]);
+      });
+    }
+  });
+  if (d.adaptation_milieu) {
+    if (!talentChoices['Adaptation']) talentChoices['Adaptation'] = new Array();
+    if (!talentChoices['Adaptation'].includes(d.adaptation_milieu)) talentChoices['Adaptation'].push(d.adaptation_milieu);
+  }
 
   const blessures = d.blessures || {};
   let maxWoundMalus = 0;
@@ -260,7 +274,7 @@ function getEffectiveState(char) {
     }
   });
 
-  const inv = d.inventaire || [];
+  const inv = d.inventaire || new Array();
   const worn = d.worn || {};
   const equipped = d.equipped || {};
   let totalWeight = 0;
@@ -268,7 +282,7 @@ function getEffectiveState(char) {
 
   let armorDef = 0;
   let rawArmorMalusAgi = 0;
-  ['Tete', 'Torse', 'Bassin', 'BrasDroit', 'BrasGauche', 'Jambes'].forEach(function(slot) {
+  new Array('Tete', 'Torse', 'Bassin', 'BrasDroit', 'BrasGauche', 'Jambes').forEach(function(slot) {
     const eqItem = equipped[slot];
     if (eqItem) {
       totalWeight += (eqItem.poids || 0);
@@ -280,7 +294,7 @@ function getEffectiveState(char) {
     }
   });
 
-  ['MainPrincipale', 'MainSecondaire', 'Monture'].forEach(function(slot) {
+  new Array('MainPrincipale', 'MainSecondaire', 'Monture').forEach(function(slot) {
     if (equipped[slot]) totalWeight += (equipped[slot].poids || 0);
   });
 
@@ -302,8 +316,10 @@ function getEffectiveState(char) {
   const emotionObj = RULES.emotions.find(function(e) { return e.nom === (d.emotion || 'Aucune'); }) || { comp: 0, att: 0, def: 0 };
   const fatigue = d.fatigue || 0;
 
-  return { caracs: caracs, talents: talents, sorts: sorts, normTalents: normTalents, maxWoundMalus: maxWoundMalus, limbDisabled: limbDisabled, totalWeight: totalWeight, maxWeight: maxWeight, encumbered: encumbered, armorDef: armorDef, armorMalusAgi: armorMalusAgi, emotionObj: emotionObj, fatigue: fatigue, worn: worn, equipped: equipped, inv: inv, blessures: blessures, talentChoices: talentChoices };
+  return { caracs: caracs, talents: talents, sorts: sorts, talentChoices: talentChoices, normTalents: normTalents, maxWoundMalus: maxWoundMalus, limbDisabled: limbDisabled, totalWeight: totalWeight, maxWeight: maxWeight, encumbered: encumbered, armorDef: armorDef, armorMalusAgi: armorMalusAgi, emotionObj: emotionObj, fatigue: fatigue, worn: worn, equipped: equipped, inv: inv, blessures: blessures };
 }
+
+
 function getCoverTotals() {
   const t = RULES.couverture.terrain.find(function(x) { return x.nom === SCENE.cover_terrain; }) || { malus: 0, bonus: 0 };
   const o = RULES.couverture.obstacles.find(function(x) { return x.nom === SCENE.cover_obstacle; }) || { malus: 0, bonus: 0 };

@@ -819,19 +819,30 @@ function initCreationForm() {
   mount.appendChild(topCarac);
 
   const gridCarac = el('div', 'grid grid-cols-6');
-  RULES.caracteristiques.forEach(function(c) {
+RULES.caracteristiques.forEach(function(c) {
     const box = el('div', 'border bg-stone-50');
     box.style.textAlign = 'center';
-box.appendChild(el('div', '', c));
-const ctrl = el('div', 'flex');
-ctrl.style.justifyContent = 'center'; ctrl.style.marginTop = '4px';
-const bMinus = el('button', '', '-'); bMinus.onclick = function() { changeCreateCarac(c, -1); };
-const valSpan = el('strong', '', '8'); valSpan.id = 'cc-' + c;
-const bPlus = el('button', '', '+'); bPlus.onclick = function() { changeCreateCarac(c, 1); };
-ctrl.appendChild(bMinus); ctrl.appendChild(valSpan); ctrl.appendChild(bPlus);
-box.appendChild(ctrl);
-gridCarac.appendChild(box);
-});
+    box.style.padding = '6px 4px';
+    box.appendChild(el('div', '', c));
+    const ctrl = el('div', 'flex');
+    ctrl.style.justifyContent = 'center';
+    ctrl.style.flexWrap = 'nowrap';
+    ctrl.style.gap = '4px';
+    ctrl.style.marginTop = '4px';
+    const bMinus = el('button', '', '-');
+    bMinus.style.padding = '2px 7px';
+    bMinus.onclick = function() { changeCreateCarac(c, -1); };
+    const valSpan = el('strong', '', '8');
+    valSpan.id = 'cc-' + c;
+    valSpan.style.display = 'inline-block';
+    valSpan.style.minWidth = '20px';
+    const bPlus = el('button', '', '+');
+    bPlus.style.padding = '2px 7px';
+    bPlus.onclick = function() { changeCreateCarac(c, 1); };
+    ctrl.appendChild(bMinus); ctrl.appendChild(valSpan); ctrl.appendChild(bPlus);
+    box.appendChild(ctrl);
+    gridCarac.appendChild(box);
+  });
 mount.appendChild(gridCarac);
 const secOrigin = el('div', 'grid grid-cols-2');
 const divP = el('div', 'space-y-2');

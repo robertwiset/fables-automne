@@ -810,6 +810,7 @@ function initCreationForm() {
   const colPort = el('div', 'flex');
   const prevImg = el('img', 'portrait-img'); prevImg.id = 'c-portrait-preview';
   prevImg.src = 'data:image/svg+xml;utf8,<svg xmlns="http://w3.org" width="64" height="64"><rect width="64" height="64" fill="%23d6d3d1"/></svg>';
+ 
   const inpFile = el('input', ''); inpFile.type = 'file'; inpFile.accept = 'image/*'; inpFile.style.fontSize = '11px';
   inpFile.onchange = function() { handlePortraitUpload(inpFile); };
   colPort.appendChild(prevImg); colPort.appendChild(inpFile);

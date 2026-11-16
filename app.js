@@ -760,7 +760,7 @@ function resetCreationForm() {
 
 
 function handlePortraitUpload(input) {
-  const file = input.files.at(0);
+  const file = input.files.item(0);
   if (!file) return;
   const reader = new FileReader();
   reader.onload = function(ev) {

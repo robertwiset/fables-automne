@@ -894,15 +894,7 @@ function getCreationTempCaracs() {
 
 
 
-function getSpellSlotsForTalents(tList) {
-  let slots = [];
-  tList.forEach(function(t) {
-    if (t === 'Initiation magique') slots.push('Initiation magique (1 sort)');
-    if (t === 'Apprentissage magique') { slots.push('Apprentissage magique (Sort 1)'); slots.push('Apprentissage magique (Sort 2)'); }
-    if (t === 'Maîtrise magique') { slots.push('Maîtrise magique (Sort 1)'); slots.push('Maîtrise magique (Sort 2)'); }
-  });
-  return slots;
-}
+
 
 function updateCreationChoices() {
   const pObj = RULES.peuples.find(function(p) { return p.nom === document.getElementById('c-peuple').value; });
@@ -930,14 +922,24 @@ function onClassTalentToggle(chk) {
   updateCreationTalents();
 }
 
-function getChoicesForTalent(tName) {
+function getChoicesForTalent(tName, acquiredChoicesMap) {
   const t = RULES.talents.find(function(x) { return x.nom === tName; });
   if (!t) return null;
+  const chMap = acquiredChoicesMap || {};
+  if (tName === 'Initiation magique') {
+    return (RULES.voies_magiques || new Array()).map(function(v) { return v.voie; });
+  }
+  if (tName === 'Apprentissage magique') {
+    return (chMap['Initiation magique'] || new Array()).slice();
+  }
+  if (tName === 'Maîtrise magique') {
+    return (chMap['Apprentissage magique'] || new Array()).slice();
+  }
   if (t.choix && t.choix.length > 0) return t.choix;
-  if (tName === 'Affinité magique') return (RULES.voies_magiques || []).map(function(v) { return v.voie; });
+  if (tName === 'Affinité magique') return (RULES.voies_magiques || new Array()).map(function(v) { return v.voie; });
   if (tName === 'Spécialisation magique' || tName === 'Entraînement magique') {
-    let allSorts = [];
-    (RULES.voies_magiques || []).forEach(function(v) { allSorts = allSorts.concat(v.sorts); });
+    let allSorts = new Array();
+    (RULES.voies_magiques || new Array()).forEach(function(v) { allSorts = allSorts.concat(v.sorts); });
     return allSorts;
   }
   return null;
@@ -948,24 +950,31 @@ function isTalentEligible(talentName, caracs, acquiredTalents, targetLevel, acqu
   const t = RULES.talents.find(function(x) { return x.nom === talentName; });
   if (!t) return false;
   if (t.niveau_min && t.niveau_min > lvl) return false;
+
   const count = acquiredTalents.filter(function(x) { return x === talentName; }).length;
-  const choicesList = getChoicesForTalent(talentName);
+  const chMap = acquiredChoicesMap || {};
+  const choicesList = getChoicesForTalent(talentName, chMap);
   const allowMulti = Boolean(t.cumulable || choicesList);
   if (!allowMulti && count >= 1) return false;
   if (t.max_prises && count >= t.max_prises) return false;
-  if (choicesList && acquiredChoicesMap && acquiredChoicesMap[talentName]) {
-    if (acquiredChoicesMap[talentName].length >= choicesList.length) return false;
+
+  if (choicesList) {
+    const usedForThis = chMap[talentName] || new Array();
+    const availForThis = choicesList.filter(function(ch) { return !usedForThis.includes(ch); });
+    if (availForThis.length === 0) return false;
   }
+
   const reqC = t.caracs || {};
   for (const c of Object.keys(reqC)) {
     if ((caracs[c] || 0) < reqC[c]) return false;
   }
-  const reqT = t.talents || [];
+  const reqT = t.talents || new Array();
   for (let i = 0; i < reqT.length; i++) {
-    if (!acquiredTalents.includes(reqT[i])) return false;
+    if (!acquiredTalents.includes(reqT.at(i))) return false;
   }
   return true;
 }
+
 
 let CREATE_SUBCHOICES = { peuple: '', culture: '', classe: {} };
 
@@ -1325,6 +1334,61 @@ function renderManageSheet() {
 }
 let LVL_DRAFT = { charId: null, carac: '', t1: '', t1Choice: '', t2: '', t2Choice: '', te: '', teChoice: '', spells: [] };
 
+
+function formatChoicesMap(cMap) {
+if (!cMap) return '';
+const parts = [];
+Object.keys(cMap).forEach(function(t) {
+if (cMap[t] && cMap[t].length > 0) parts.push(t + ' : ' + cMap[t].join(', '));
+});
+return parts.length > 0 ? ' [' + parts.join(' ; ') + ']' : '';
+}
+function renderCareerHistory(char, container) {
+const histBox = el('div', 'border space-y-2');
+histBox.appendChild(el('strong', '', 'Plan de carrière (du plus récent au niveau 1) :'));
+const d = char.data;
+for (let lvl = char.level; lvl >= 2; lvl--) {
+const row = el('div', 'border bg-stone-50');
+row.style.fontSize = '12px';
+const cGain = (d.level_caracs || {})[lvl];
+const tGains = (d.level_talents || {})[lvl] || [];
+const chGains = (d.level_talent_choices || {})[lvl];
+const sGains = (d.level_sorts || {})[lvl] || [];
+let txt = 'Niveau ' + lvl + ' : ';
+if (cGain) txt += '[+1 ' + cGain + '] ';
+txt += 'Talents : ' + (tGains.join(', ') || '—') + formatChoicesMap(chGains);
+if (sGains.length > 0) txt += ' | Sorts : ' + sGains.map(function(s) { return s.nom + ' (' + s.voie + ')'; }).join(', ');
+row.textContent = txt;
+histBox.appendChild(row);
+}
+const lvl1Row = el('div', 'border bg-stone-50');
+lvl1Row.style.fontSize = '12px';
+lvl1Row.textContent = 'Niveau 1 (Création) : ' + d.peuple + ' (+1 ' + d.peuple_carac + '), ' + d.culture + ' (+1 ' + d.culture_carac + '), ' + d.classe + ' | Talents : ' + (d.talents_lvl1 || []).join(', ') + formatChoicesMap(d.talent_choices_lvl1);
+histBox.appendChild(lvl1Row);
+container.appendChild(histBox);
+}
+
+function getSpellSlotsForDraft(draft) {
+  let slots = new Array();
+  const inspect = function(t, voie) {
+    if (t === 'Initiation magique' && voie) {
+      slots.push({ label: 'Initiation magique (' + voie + ') — Sort 1/1', voie: voie });
+    }
+    if (t === 'Apprentissage magique' && voie) {
+      slots.push({ label: 'Apprentissage magique (' + voie + ') — Sort 1/2', voie: voie });
+      slots.push({ label: 'Apprentissage magique (' + voie + ') — Sort 2/2', voie: voie });
+    }
+    if (t === 'Maîtrise magique' && voie) {
+      slots.push({ label: 'Maîtrise magique (' + voie + ') — Sort 1/2', voie: voie });
+      slots.push({ label: 'Maîtrise magique (' + voie + ') — Sort 2/2', voie: voie });
+    }
+  };
+  inspect(draft.t1, draft.t1Choice);
+  inspect(draft.t2, draft.t2Choice);
+  inspect(draft.te, draft.teChoice);
+  return slots;
+}
+
 function renderLevelUpBox(char, container) {
   const nextLvl = char.level + 1;
   if (LVL_DRAFT.charId !== char.id) {
@@ -1396,14 +1460,14 @@ function renderLevelUpBox(char, container) {
   selT1.onchange = function() { LVL_DRAFT.t1 = selT1.value; LVL_DRAFT.t1Choice = ''; renderManageSheet(); };
   t1Div.appendChild(selT1);
 
-  const t1ChoicesList = getChoicesForTalent(LVL_DRAFT.t1);
+  const t1ChoicesList = getChoicesForTalent(LVL_DRAFT.t1, mapForT1);
   if (t1ChoicesList) {
     const used1 = mapForT1[LVL_DRAFT.t1] || new Array();
     const avail1 = t1ChoicesList.filter(function(ch) { return !used1.includes(ch); });
     if (!avail1.includes(LVL_DRAFT.t1Choice)) LVL_DRAFT.t1Choice = avail1.at(0) || '';
     const selSub1 = el('select', ''); selSub1.style.width = '100%'; selSub1.style.background = '#fef3c7';
     avail1.forEach(function(ch) {
-      const o = el('option', '', 'Spécialisation (' + LVL_DRAFT.t1 + ') : ' + ch); o.value = ch;
+      const o = el('option', '', 'Option (' + LVL_DRAFT.t1 + ') : ' + ch); o.value = ch;
       if (LVL_DRAFT.t1Choice === ch) o.selected = true;
       selSub1.appendChild(o);
     });
@@ -1429,14 +1493,14 @@ function renderLevelUpBox(char, container) {
   selT2.onchange = function() { LVL_DRAFT.t2 = selT2.value; LVL_DRAFT.t2Choice = ''; renderManageSheet(); };
   t2Div.appendChild(selT2);
 
-  const t2ChoicesList = getChoicesForTalent(LVL_DRAFT.t2);
+  const t2ChoicesList = getChoicesForTalent(LVL_DRAFT.t2, mapForT2);
   if (t2ChoicesList) {
     const used2 = mapForT2[LVL_DRAFT.t2] || new Array();
     const avail2 = t2ChoicesList.filter(function(ch) { return !used2.includes(ch); });
     if (!avail2.includes(LVL_DRAFT.t2Choice)) LVL_DRAFT.t2Choice = avail2.at(0) || '';
     const selSub2 = el('select', ''); selSub2.style.width = '100%'; selSub2.style.background = '#fef3c7';
     avail2.forEach(function(ch) {
-      const o = el('option', '', 'Spécialisation (' + LVL_DRAFT.t2 + ') : ' + ch); o.value = ch;
+      const o = el('option', '', 'Option (' + LVL_DRAFT.t2 + ') : ' + ch); o.value = ch;
       if (LVL_DRAFT.t2Choice === ch) o.selected = true;
       selSub2.appendChild(o);
     });
@@ -1463,14 +1527,14 @@ function renderLevelUpBox(char, container) {
     selTe.onchange = function() { LVL_DRAFT.te = selTe.value; LVL_DRAFT.teChoice = ''; renderManageSheet(); };
     teDiv.appendChild(selTe);
 
-    const teChoicesList = getChoicesForTalent(LVL_DRAFT.te);
+    const teChoicesList = getChoicesForTalent(LVL_DRAFT.te, mapForTe);
     if (teChoicesList) {
       const usedE = mapForTe[LVL_DRAFT.te] || new Array();
       const availE = teChoicesList.filter(function(ch) { return !usedE.includes(ch); });
       if (!availE.includes(LVL_DRAFT.teChoice)) LVL_DRAFT.teChoice = availE.at(0) || '';
       const selSubE = el('select', ''); selSubE.style.width = '100%'; selSubE.style.background = '#fef3c7';
       availE.forEach(function(ch) {
-        const o = el('option', '', 'Spécialisation (' + LVL_DRAFT.te + ') : ' + ch); o.value = ch;
+        const o = el('option', '', 'Option (' + LVL_DRAFT.te + ') : ' + ch); o.value = ch;
         if (LVL_DRAFT.teChoice === ch) o.selected = true;
         selSubE.appendChild(o);
       });
@@ -1481,98 +1545,62 @@ function renderLevelUpBox(char, container) {
   }
   box.appendChild(row);
 
-  const chosenTalents = new Array(LVL_DRAFT.t1, LVL_DRAFT.t2, LVL_DRAFT.te).filter(Boolean);
-  const spellSlots = getSpellSlotsForTalents(chosenTalents);
+  const spellSlots = getSpellSlotsForDraft(LVL_DRAFT);
+  const alreadyKnownNames = (baseSt.sorts || new Array()).map(function(s) { return s.nom; });
   if (spellSlots.length > 0) {
     const spWrap = el('div', 'border bg-purple-50 space-y-2');
     spWrap.appendChild(el('strong', '', 'Choix des nouveaux sorts débloqués :'));
-    spellSlots.forEach(function(slotLabel, idx) {
-      if (!LVL_DRAFT.spells.at(idx)) LVL_DRAFT.spells[idx] = { voie: 'Air', nom: 'Ascension' };
-      const sRow = el('div', 'flex');
-      sRow.appendChild(el('span', '', slotLabel + ' :'));
-      const selV = el('select', '');
-      (RULES.voies_magiques || new Array()).forEach(function(v) {
-        const o = el('option', '', v.voie); o.value = v.voie;
-        if (LVL_DRAFT.spells.at(idx).voie === v.voie) o.selected = true;
-        selV.appendChild(o);
-      });
-      const selS = el('select', '');
-      const vObj = (RULES.voies_magiques || new Array()).find(function(x) { return x.voie === selV.value; });
-      if (vObj) {
-        if (!vObj.sorts.includes(LVL_DRAFT.spells.at(idx).nom)) LVL_DRAFT.spells[idx].nom = vObj.sorts.at(0);
-        vObj.sorts.forEach(function(s) {
-          const o = el('option', '', s); o.value = s;
-          if (LVL_DRAFT.spells.at(idx).nom === s) o.selected = true;
-          selS.appendChild(o);
-        });
-      }
-      selV.onchange = function() { LVL_DRAFT.spells[idx] = { voie: selV.value, nom: '' }; renderManageSheet(); };
-      selS.onchange = function() { LVL_DRAFT.spells[idx].nom = selS.value; };
-      sRow.appendChild(selV); sRow.appendChild(selS);
-      spWrap.appendChild(sRow);
-    });
-    box.appendChild(spWrap);
-  } else {
-    LVL_DRAFT.spells = new Array();
-  }
-  const btnVal = el('button', 'bg-amber-800', 'Valider le passage au Niveau ' + nextLvl);
-  btnVal.style.width = '100%';
-  btnVal.onclick = function() { confirmLevelUp(char.id, nextLvl, hasCaracChoice, hasEpique, spellSlots.length); };
-  box.appendChild(btnVal);
-  container.appendChild(box);
+    const pickedThisLevel = new Array();
+    spellSlots.forEach(function(slotObj, idx) {
+      const vObj = (RULES.voies_magiques || new Array()).find(function(x) { return x.voie === slotObj.voie; });
+      const availSorts = vObj ? vObj.sorts.filter(function(s) { return !alreadyKnownNames.includes(s) && !pickedThisLevel.includes(s); }) : new Array();
+      if (!LVL_DRAFT.spells.at(idx) || LVL_DRAFT.spells.at(idx).voie !== slotObj.voie || !availSorts.includes(LVL_DRAFT.spells.at(idx).nom)) {
+LVL_DRAFT.spells[idx] = { voie: slotObj.voie, nom: availSorts.at(0) || '' };
 }
-
-
-function formatChoicesMap(cMap) {
-if (!cMap) return '';
-const parts = [];
-Object.keys(cMap).forEach(function(t) {
-if (cMap[t] && cMap[t].length > 0) parts.push(t + ' : ' + cMap[t].join(', '));
+if (LVL_DRAFT.spells.at(idx).nom) pickedThisLevel.push(LVL_DRAFT.spells.at(idx).nom);
+const sRow = el('div', 'flex');
+sRow.appendChild(el('span', '', slotObj.label + ' :'));
+const selS = el('select', '');
+availSorts.forEach(function(s) {
+const o = el('option', '', s); o.value = s;
+if (LVL_DRAFT.spells.at(idx).nom === s) o.selected = true;
+selS.appendChild(o);
 });
-return parts.length > 0 ? ' [' + parts.join(' ; ') + ']' : '';
+selS.onchange = function() { LVL_DRAFT.spells[idx].nom = selS.value; renderManageSheet(); };
+sRow.appendChild(selS);
+spWrap.appendChild(sRow);
+});
+box.appendChild(spWrap);
+} else {
+LVL_DRAFT.spells = new Array();
 }
-function renderCareerHistory(char, container) {
-const histBox = el('div', 'border space-y-2');
-histBox.appendChild(el('strong', '', 'Plan de carrière (du plus récent au niveau 1) :'));
-const d = char.data;
-for (let lvl = char.level; lvl >= 2; lvl--) {
-const row = el('div', 'border bg-stone-50');
-row.style.fontSize = '12px';
-const cGain = (d.level_caracs || {})[lvl];
-const tGains = (d.level_talents || {})[lvl] || [];
-const chGains = (d.level_talent_choices || {})[lvl];
-const sGains = (d.level_sorts || {})[lvl] || [];
-let txt = 'Niveau ' + lvl + ' : ';
-if (cGain) txt += '[+1 ' + cGain + '] ';
-txt += 'Talents : ' + (tGains.join(', ') || '—') + formatChoicesMap(chGains);
-if (sGains.length > 0) txt += ' | Sorts : ' + sGains.map(function(s) { return s.nom + ' (' + s.voie + ')'; }).join(', ');
-row.textContent = txt;
-histBox.appendChild(row);
-}
-const lvl1Row = el('div', 'border bg-stone-50');
-lvl1Row.style.fontSize = '12px';
-lvl1Row.textContent = 'Niveau 1 (Création) : ' + d.peuple + ' (+1 ' + d.peuple_carac + '), ' + d.culture + ' (+1 ' + d.culture_carac + '), ' + d.classe + ' | Talents : ' + (d.talents_lvl1 || []).join(', ') + formatChoicesMap(d.talent_choices_lvl1);
-histBox.appendChild(lvl1Row);
-container.appendChild(histBox);
+const btnVal = el('button', 'bg-amber-800', 'Valider le passage au Niveau ' + nextLvl);
+btnVal.style.width = '100%';
+btnVal.onclick = function() { confirmLevelUp(char.id, nextLvl, hasCaracChoice, hasEpique, spellSlots.length); };
+box.appendChild(btnVal);
+container.appendChild(box);
 }
 async function confirmLevelUp(charId, nextLvl, hasCaracChoice, hasEpique, spellCount) {
 if (hasCaracChoice && !LVL_DRAFT.carac) return alert("Veuillez choisir une caractéristique (+1).");
 if (!LVL_DRAFT.t1 || !LVL_DRAFT.t2) return alert("Veuillez sélectionner les 2 talents communs.");
 if (hasEpique && !LVL_DRAFT.te) return alert("Veuillez sélectionner un talent épique.");
+if (getChoicesForTalent(LVL_DRAFT.t1, {}) && !LVL_DRAFT.t1Choice) return alert("Veuillez choisir une option pour " + LVL_DRAFT.t1 + ".");
+if (getChoicesForTalent(LVL_DRAFT.t2, {}) && !LVL_DRAFT.t2Choice) return alert("Veuillez choisir une option pour " + LVL_DRAFT.t2 + ".");
+if (hasEpique && getChoicesForTalent(LVL_DRAFT.te, {}) && !LVL_DRAFT.teChoice) return alert("Veuillez choisir une option pour " + LVL_DRAFT.te + ".");
 const char = CHARACTERS.find(function(c) { return c.id === charId; });
 const d = Object.assign({}, char.data);
 if (hasCaracChoice) {
 d.level_caracs = Object.assign({}, d.level_caracs || {});
 d.level_caracs[nextLvl] = LVL_DRAFT.carac;
 }
-const gainedTalents = [LVL_DRAFT.t1, LVL_DRAFT.t2];
+const gainedTalents = new Array(LVL_DRAFT.t1, LVL_DRAFT.t2);
 if (hasEpique) gainedTalents.push(LVL_DRAFT.te);
 d.level_talents = Object.assign({}, d.level_talents || {});
 d.level_talents[nextLvl] = gainedTalents;
 const lvlChoices = {};
 const pushChoice = function(t, ch) {
 if (!t || !ch) return;
-if (!lvlChoices[t]) lvlChoices[t] = [];
+if (!lvlChoices[t]) lvlChoices[t] = new Array();
 lvlChoices[t].push(ch);
 };
 pushChoice(LVL_DRAFT.t1, LVL_DRAFT.t1Choice);
@@ -1581,13 +1609,17 @@ if (hasEpique) pushChoice(LVL_DRAFT.te, LVL_DRAFT.teChoice);
 d.level_talent_choices = Object.assign({}, d.level_talent_choices || {});
 d.level_talent_choices[nextLvl] = lvlChoices;
 if (spellCount > 0) {
+const picked = LVL_DRAFT.spells.slice(0, spellCount);
+if (picked.some(function(s) { return !s || !s.nom; })) return alert("Veuillez sélectionner tous les sorts débloqués.");
 d.level_sorts = Object.assign({}, d.level_sorts || {});
-d.level_sorts[nextLvl] = LVL_DRAFT.spells.slice(0, spellCount);
+d.level_sorts[nextLvl] = picked;
 }
-LVL_DRAFT = { charId: null, carac: '', t1: '', t1Choice: '', t2: '', t2Choice: '', te: '', teChoice: '', spells: [] };
+LVL_DRAFT = { charId: null, carac: '', t1: '', t1Choice: '', t2: '', t2Choice: '', te: '', teChoice: '', spells: new Array() };
 await sb.from('characters').update({ level: nextLvl, effective_level: nextLvl, data: d }).eq('id', charId);
 alert("Passage au Niveau " + nextLvl + " validé !");
 }
+        
+
 async function revertLastLevel(charId) {
 const char = CHARACTERS.find(function(c) { return c.id === charId; });
 if (!char || char.level <= 1) return;

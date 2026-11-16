@@ -735,13 +735,16 @@ function renderHealthBlock(char, st, container, isOwner) {
   container.appendChild(wGrid);
 }
 
-
 function toggleCreateForm() {
   const wrap = document.getElementById('create-form-wrapper');
+  const manageSheet = document.getElementById('manage-sheet-container');
+  const sheetSelect = document.getElementById('sheet-char-select');
   const isOpening = wrap.classList.contains('hidden');
   if (isOpening) {
     resetCreationForm();
     wrap.classList.remove('hidden');
+    if (manageSheet) manageSheet.classList.add('hidden');
+    if (sheetSelect) sheetSelect.disabled = true;
   } else {
     cancelCreation();
   }
@@ -750,7 +753,13 @@ function toggleCreateForm() {
 function cancelCreation() {
   resetCreationForm();
   document.getElementById('create-form-wrapper').classList.add('hidden');
+  const manageSheet = document.getElementById('manage-sheet-container');
+  const sheetSelect = document.getElementById('sheet-char-select');
+  if (manageSheet) manageSheet.classList.remove('hidden');
+  if (sheetSelect) sheetSelect.disabled = false;
 }
+
+
 
 function resetCreationForm() {
   CREATE_CARACS = { Force: 8, Agilité: 8, Santé: 8, Connaissance: 8, Perception: 8, Présence: 8 };

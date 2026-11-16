@@ -1177,6 +1177,11 @@ async function saveNewCharacter() {
   CREATE_PORTRAIT = '';
 CREATE_SUBCHOICES = { peuple: '', culture: '', classe: {} };
 document.getElementById('create-form-wrapper').classList.add('hidden');
+const manageSheet = document.getElementById('manage-sheet-container');
+const sheetSelect = document.getElementById('sheet-char-select');
+if (manageSheet) manageSheet.classList.remove('hidden');
+if (sheetSelect) sheetSelect.disabled = false;
+
 alert("Personnage créé avec succès !");
 await refreshAllData(true);
 switchTab('play');

@@ -225,6 +225,21 @@ function getEffectiveState(char) {
   if (d.culture_carac) caracs[d.culture_carac] = (caracs[d.culture_carac] || 8) + 1;
 
   const lvlUpCaracs = d.level_caracs || {};
+
+  const companions = { suivant: null, familier: null };
+  const lvlCompanions = d.level_companions || {};
+  Object.keys(lvlCompanions).sort(function(a, b) { return parseInt(a) - parseInt(b); }).forEach(function(lvl) {
+    if (parseInt(lvl) <= effLvl) {
+      const act = lvlCompanions[lvl];
+      if (act.type === 'gain_suivant') companions.suivant = { nom: act.nom || 'Suivant', ameliore: false };
+      if (act.type === 'gain_familier') companions.familier = { nom: act.nom || 'Familier', ameliore: false };
+      if (act.type === 'upgrade_suivant' && companions.suivant) companions.suivant.ameliore = true;
+      if (act.type === 'upgrade_familier' && companions.familier) companions.familier.ameliore = true;
+    }
+  });
+
+
+  
   Object.keys(lvlUpCaracs).forEach(function(lvl) {
     if (parseInt(lvl) <= effLvl && lvlUpCaracs[lvl]) {
       caracs[lvlUpCaracs[lvl]] = (caracs[lvlUpCaracs[lvl]] || 8) + 1;
@@ -316,7 +331,7 @@ function getEffectiveState(char) {
   const emotionObj = RULES.emotions.find(function(e) { return e.nom === (d.emotion || 'Aucune'); }) || { comp: 0, att: 0, def: 0 };
   const fatigue = d.fatigue || 0;
 
-  return { caracs: caracs, talents: talents, sorts: sorts, talentChoices: talentChoices, normTalents: normTalents, maxWoundMalus: maxWoundMalus, limbDisabled: limbDisabled, totalWeight: totalWeight, maxWeight: maxWeight, encumbered: encumbered, armorDef: armorDef, armorMalusAgi: armorMalusAgi, emotionObj: emotionObj, fatigue: fatigue, worn: worn, equipped: equipped, inv: inv, blessures: blessures };
+  return { companions: companions, caracs: caracs, talents: talents, sorts: sorts, talentChoices: talentChoices, normTalents: normTalents, maxWoundMalus: maxWoundMalus, limbDisabled: limbDisabled, totalWeight: totalWeight, maxWeight: maxWeight, encumbered: encumbered, armorDef: armorDef, armorMalusAgi: armorMalusAgi, emotionObj: emotionObj, fatigue: fatigue, worn: worn, equipped: equipped, inv: inv, blessures: blessures };
 }
 
 
@@ -427,6 +442,12 @@ function renderPlaySheet() {
   document.getElementById('play-char-badge').textContent = 'Niv. ' + char.effective_level + (char.effective_level !== char.level ? ' / ' + char.level : '');
   document.getElementById('play-char-subtitle').textContent = char.data.peuple + ' • ' + char.data.culture + ' • ' + char.data.classe + ' • Désir : ' + char.data.desir;
 
+  let compTxt = '';
+  if (st.companions.suivant) compTxt += ' | Suivant : ' + st.companions.suivant.nom + (st.companions.suivant.ameliore ? ' (Amélioré)' : '');
+  if (st.companions.familier) compTxt += ' | Familier : ' + st.companions.familier.nom + (st.companions.familier.ameliore ? ' (Amélioré)' : '');
+  document.getElementById('play-char-subtitle').textContent += compTxt;
+
+  
   statusDiv.textContent = 'Fatigue : ' + st.fatigue + '/' + st.caracs['Santé'] + ' | Émotion : ' + (char.data.emotion || 'Aucune') + ' | Blessure max : -' + st.maxWoundMalus + ' | Armure Agi : -' + st.armorMalusAgi + (st.encumbered ? ' | ENCOMBRÉ !' : '');
 
   RULES.caracteristiques.forEach(function(cName) {
@@ -1358,7 +1379,8 @@ function renderManageSheet() {
   eqBox.appendChild(invList);
   container.appendChild(eqBox);
 }
-let LVL_DRAFT = { charId: null, carac: '', t1: '', t1Choice: '', t2: '', t2Choice: '', te: '', teChoice: '', spells: [] };
+
+
 
 
 function formatChoicesMap(cMap) {
@@ -1368,30 +1390,6 @@ Object.keys(cMap).forEach(function(t) {
 if (cMap[t] && cMap[t].length > 0) parts.push(t + ' : ' + cMap[t].join(', '));
 });
 return parts.length > 0 ? ' [' + parts.join(' ; ') + ']' : '';
-}
-function renderCareerHistory(char, container) {
-const histBox = el('div', 'border space-y-2');
-histBox.appendChild(el('strong', '', 'Plan de carrière (du plus récent au niveau 1) :'));
-const d = char.data;
-for (let lvl = char.level; lvl >= 2; lvl--) {
-const row = el('div', 'border bg-stone-50');
-row.style.fontSize = '12px';
-const cGain = (d.level_caracs || {})[lvl];
-const tGains = (d.level_talents || {})[lvl] || [];
-const chGains = (d.level_talent_choices || {})[lvl];
-const sGains = (d.level_sorts || {})[lvl] || [];
-let txt = 'Niveau ' + lvl + ' : ';
-if (cGain) txt += '[+1 ' + cGain + '] ';
-txt += 'Talents : ' + (tGains.join(', ') || '—') + formatChoicesMap(chGains);
-if (sGains.length > 0) txt += ' | Sorts : ' + sGains.map(function(s) { return s.nom + ' (' + s.voie + ')'; }).join(', ');
-row.textContent = txt;
-histBox.appendChild(row);
-}
-const lvl1Row = el('div', 'border bg-stone-50');
-lvl1Row.style.fontSize = '12px';
-lvl1Row.textContent = 'Niveau 1 (Création) : ' + d.peuple + ' (+1 ' + d.peuple_carac + '), ' + d.culture + ' (+1 ' + d.culture_carac + '), ' + d.classe + ' | Talents : ' + (d.talents_lvl1 || []).join(', ') + formatChoicesMap(d.talent_choices_lvl1);
-histBox.appendChild(lvl1Row);
-container.appendChild(histBox);
 }
 
 function getSpellSlotsForDraft(draft) {
@@ -1415,10 +1413,12 @@ function getSpellSlotsForDraft(draft) {
   return slots;
 }
 
+let LVL_DRAFT = { charId: null, carac: '', compAction: '', compName: '', t1: '', t1Choice: '', t2: '', t2Choice: '', te: '', teChoice: '', spells: new Array() };
+
 function renderLevelUpBox(char, container) {
   const nextLvl = char.level + 1;
   if (LVL_DRAFT.charId !== char.id) {
-    LVL_DRAFT = { charId: char.id, carac: '', t1: '', t1Choice: '', t2: '', t2Choice: '', te: '', teChoice: '', spells: new Array() };
+    LVL_DRAFT = { charId: char.id, carac: '', compAction: '', compName: '', t1: '', t1Choice: '', t2: '', t2Choice: '', te: '', teChoice: '', spells: new Array() };
   }
 
   const fullChar = Object.assign({}, char, { effective_level: char.level });
@@ -1427,11 +1427,33 @@ function renderLevelUpBox(char, container) {
   rawCaracs['Agilité'] += baseSt.armorMalusAgi;
   const baseChoicesMap = baseSt.talentChoices || {};
 
-  const hasCaracChoice = (nextLvl % 5 === 0);
-  const prevPalierCarac = (char.data.level_caracs || {})[nextLvl - 5] || '';
+  const isPalier5 = (nextLvl % 5 === 0);
+  let prevPalierCarac = '';
+  for (let l = nextLvl - 5; l >= 5; l -= 5) {
+    if ((char.data.level_caracs || {})[l]) { prevPalierCarac = char.data.level_caracs[l]; break; }
+  }
   const availCaracs = RULES.caracteristiques.filter(function(c) { return c !== prevPalierCarac; });
-  if (hasCaracChoice && !availCaracs.includes(LVL_DRAFT.carac)) LVL_DRAFT.carac = '';
-  if (hasCaracChoice && LVL_DRAFT.carac) rawCaracs[LVL_DRAFT.carac] += 1;
+
+  const allTalentsSoFar = baseSt.talents.concat(new Array(LVL_DRAFT.t1, LVL_DRAFT.t2, LVL_DRAFT.te).filter(Boolean));
+  const hasPrestige = allTalentsSoFar.includes('Prestige');
+  const hasFamilier = allTalentsSoFar.includes('Familier');
+  const honneurCount = allTalentsSoFar.filter(function(t) { return t === 'Honneur'; }).length;
+  const upgradedCount = (baseSt.companions.suivant && baseSt.companions.suivant.ameliore ? 1 : 0) + (baseSt.companions.familier && baseSt.companions.familier.ameliore ? 1 : 0);
+
+  const compOptions = new Array();
+  if (isPalier5) {
+    if (hasPrestige && !baseSt.companions.suivant) compOptions.push({ val: 'gain_suivant', label: 'Renoncer au +1 Carac → Obtenir un Suivant (Prestige)' });
+    if (hasFamilier && !baseSt.companions.familier) compOptions.push({ val: 'gain_familier', label: 'Renoncer au +1 Carac → Obtenir un Familier (Familier)' });
+    if (honneurCount > upgradedCount) {
+      if (baseSt.companions.suivant && !baseSt.companions.suivant.ameliore) compOptions.push({ val: 'upgrade_suivant', label: 'Renoncer au +1 Carac → Améliorer le Suivant (Honneur)' });
+      if (baseSt.companions.familier && !baseSt.companions.familier.ameliore) compOptions.push({ val: 'upgrade_familier', label: 'Renoncer au +1 Carac → Améliorer le Familier (Honneur)' });
+    }
+  }
+
+  if (LVL_DRAFT.compAction && !compOptions.some(function(o) { return o.val === LVL_DRAFT.compAction; })) LVL_DRAFT.compAction = '';
+  if (LVL_DRAFT.compAction) LVL_DRAFT.carac = '';
+  if (isPalier5 && !LVL_DRAFT.compAction && !availCaracs.includes(LVL_DRAFT.carac)) LVL_DRAFT.carac = '';
+  if (isPalier5 && !LVL_DRAFT.compAction && LVL_DRAFT.carac) rawCaracs[LVL_DRAFT.carac] += 1;
 
   const hasEpique = new Array(15, 18, 21, 24, 27, 30).includes(nextLvl);
 
@@ -1453,19 +1475,47 @@ function renderLevelUpBox(char, container) {
   box.appendChild(el('strong', '', 'Passage au Niveau ' + nextLvl + ' :'));
   const row = el('div', 'grid grid-cols-2');
 
-  if (hasCaracChoice) {
-    const cDiv = el('div', '');
-    cDiv.appendChild(el('div', '', 'Caractéristique +1 (hors ' + (prevPalierCarac || 'aucune') + ') :'));
+  if (isPalier5) {
+    const cDiv = el('div', 'space-y-2');
+    cDiv.appendChild(el('div', '', 'Bonus de palier (Niveau ' + nextLvl + ') :'));
     const selC = el('select', ''); selC.style.width = '100%';
-    const o0 = el('option', '', '— Choisir une caractéristique —'); o0.value = ''; selC.appendChild(o0);
+    const o0 = el('option', '', '— Choisir +1 Caractéristique ou Compagnon —'); o0.value = ''; selC.appendChild(o0);
+
     availCaracs.forEach(function(c) {
-      const o = el('option', '', c + ' (' + (rawCaracs[c] - (LVL_DRAFT.carac === c ? 1 : 0)) + ' -> ' + (rawCaracs[c] + (LVL_DRAFT.carac === c ? 0 : 1)) + ')');
-      o.value = c;
-      if (LVL_DRAFT.carac === c) o.selected = true;
+      const o = el('option', '', '+1 ' + c + ' (' + (rawCaracs[c] - (LVL_DRAFT.carac === c ? 1 : 0)) + ' -> ' + (rawCaracs[c] + (LVL_DRAFT.carac === c ? 0 : 1)) + ')');
+      o.value = 'carac:' + c;
+      if (!LVL_DRAFT.compAction && LVL_DRAFT.carac === c) o.selected = true;
       selC.appendChild(o);
     });
-    selC.onchange = function() { LVL_DRAFT.carac = selC.value; renderManageSheet(); };
+
+    compOptions.forEach(function(opt) {
+      const o = el('option', '', opt.label);
+      o.value = 'comp:' + opt.val;
+      if (LVL_DRAFT.compAction === opt.val) o.selected = true;
+      selC.appendChild(o);
+    });
+
+    selC.onchange = function() {
+      if (selC.value.startsWith('comp:')) {
+        LVL_DRAFT.compAction = selC.value.replace('comp:', '');
+        LVL_DRAFT.carac = '';
+      } else if (selC.value.startsWith('carac:')) {
+        LVL_DRAFT.carac = selC.value.replace('carac:', '');
+        LVL_DRAFT.compAction = '';
+      } else {
+        LVL_DRAFT.carac = ''; LVL_DRAFT.compAction = '';
+      }
+      renderManageSheet();
+    };
     cDiv.appendChild(selC);
+
+    if (LVL_DRAFT.compAction === 'gain_suivant' || LVL_DRAFT.compAction === 'gain_familier') {
+      const inpComp = el('input', ''); inpComp.type = 'text'; inpComp.style.width = '95%';
+      inpComp.placeholder = LVL_DRAFT.compAction === 'gain_suivant' ? 'Nom du Suivant...' : 'Nom du Familier...';
+      inpComp.value = LVL_DRAFT.compName || '';
+      inpComp.oninput = function() { LVL_DRAFT.compName = inpComp.value; };
+      cDiv.appendChild(inpComp);
+    }
     row.appendChild(cDiv);
   }
 
@@ -1546,41 +1596,39 @@ function renderLevelUpBox(char, container) {
     const selTe = el('select', ''); selTe.style.width = '100%';
     const ote0 = el('option', '', '— Choisir un talent épique —'); ote0.value = ''; selTe.appendChild(ote0);
     eligTe.forEach(function(t) {
-      const o = el('option', '', t.nom + ' — ' + t.effet); o.value = t.nom;
-      if (LVL_DRAFT.te === t.nom) o.selected = true;
-      selTe.appendChild(o);
-    });
-    selTe.onchange = function() { LVL_DRAFT.te = selTe.value; LVL_DRAFT.teChoice = ''; renderManageSheet(); };
-    teDiv.appendChild(selTe);
-
-    const teChoicesList = getChoicesForTalent(LVL_DRAFT.te, mapForTe);
-    if (teChoicesList) {
-      const usedE = mapForTe[LVL_DRAFT.te] || new Array();
-      const availE = teChoicesList.filter(function(ch) { return !usedE.includes(ch); });
-      if (!availE.includes(LVL_DRAFT.teChoice)) LVL_DRAFT.teChoice = availE.at(0) || '';
-      const selSubE = el('select', ''); selSubE.style.width = '100%'; selSubE.style.background = '#fef3c7';
-      availE.forEach(function(ch) {
-        const o = el('option', '', 'Option (' + LVL_DRAFT.te + ') : ' + ch); o.value = ch;
-        if (LVL_DRAFT.teChoice === ch) o.selected = true;
-        selSubE.appendChild(o);
-      });
-      selSubE.onchange = function() { LVL_DRAFT.teChoice = selSubE.value; renderManageSheet(); };
-      teDiv.appendChild(selSubE);
-    }
-    row.appendChild(teDiv);
-  }
-  box.appendChild(row);
-
-  const spellSlots = getSpellSlotsForDraft(LVL_DRAFT);
-  const alreadyKnownNames = (baseSt.sorts || new Array()).map(function(s) { return s.nom; });
-  if (spellSlots.length > 0) {
-    const spWrap = el('div', 'border bg-purple-50 space-y-2');
-    spWrap.appendChild(el('strong', '', 'Choix des nouveaux sorts débloqués :'));
-    const pickedThisLevel = new Array();
-    spellSlots.forEach(function(slotObj, idx) {
-      const vObj = (RULES.voies_magiques || new Array()).find(function(x) { return x.voie === slotObj.voie; });
-      const availSorts = vObj ? vObj.sorts.filter(function(s) { return !alreadyKnownNames.includes(s) && !pickedThisLevel.includes(s); }) : new Array();
-      if (!LVL_DRAFT.spells.at(idx) || LVL_DRAFT.spells.at(idx).voie !== slotObj.voie || !availSorts.includes(LVL_DRAFT.spells.at(idx).nom)) {
+const o = el('option', '', t.nom + ' — ' + t.effet); o.value = t.nom;
+if (LVL_DRAFT.te === t.nom) o.selected = true;
+selTe.appendChild(o);
+});
+selTe.onchange = function() { LVL_DRAFT.te = selTe.value; LVL_DRAFT.teChoice = ''; renderManageSheet(); };
+teDiv.appendChild(selTe);
+const teChoicesList = getChoicesForTalent(LVL_DRAFT.te, mapForTe);
+if (teChoicesList) {
+const usedE = mapForTe[LVL_DRAFT.te] || new Array();
+const availE = teChoicesList.filter(function(ch) { return !usedE.includes(ch); });
+if (!availE.includes(LVL_DRAFT.teChoice)) LVL_DRAFT.teChoice = availE.at(0) || '';
+const selSubE = el('select', ''); selSubE.style.width = '100%'; selSubE.style.background = '#fef3c7';
+availE.forEach(function(ch) {
+const o = el('option', '', 'Option (' + LVL_DRAFT.te + ') : ' + ch); o.value = ch;
+if (LVL_DRAFT.teChoice === ch) o.selected = true;
+selSubE.appendChild(o);
+});
+selSubE.onchange = function() { LVL_DRAFT.teChoice = selSubE.value; renderManageSheet(); };
+teDiv.appendChild(selSubE);
+}
+row.appendChild(teDiv);
+}
+box.appendChild(row);
+const spellSlots = getSpellSlotsForDraft(LVL_DRAFT);
+const alreadyKnownNames = (baseSt.sorts || new Array()).map(function(s) { return s.nom; });
+if (spellSlots.length > 0) {
+const spWrap = el('div', 'border bg-purple-50 space-y-2');
+spWrap.appendChild(el('strong', '', 'Choix des nouveaux sorts débloqués :'));
+const pickedThisLevel = new Array();
+spellSlots.forEach(function(slotObj, idx) {
+const vObj = (RULES.voies_magiques || new Array()).find(function(x) { return x.voie === slotObj.voie; });
+const availSorts = vObj ? vObj.sorts.filter(function(s) { return !alreadyKnownNames.includes(s) && !pickedThisLevel.includes(s); }) : new Array();
+if (!LVL_DRAFT.spells.at(idx) || LVL_DRAFT.spells.at(idx).voie !== slotObj.voie || !availSorts.includes(LVL_DRAFT.spells.at(idx).nom)) {
 LVL_DRAFT.spells[idx] = { voie: slotObj.voie, nom: availSorts.at(0) || '' };
 }
 if (LVL_DRAFT.spells.at(idx).nom) pickedThisLevel.push(LVL_DRAFT.spells.at(idx).nom);
@@ -1602,12 +1650,43 @@ LVL_DRAFT.spells = new Array();
 }
 const btnVal = el('button', 'bg-amber-800', 'Valider le passage au Niveau ' + nextLvl);
 btnVal.style.width = '100%';
-btnVal.onclick = function() { confirmLevelUp(char.id, nextLvl, hasCaracChoice, hasEpique, spellSlots.length); };
+btnVal.onclick = function() { confirmLevelUp(char.id, nextLvl, isPalier5, hasEpique, spellSlots.length); };
 box.appendChild(btnVal);
 container.appendChild(box);
 }
-async function confirmLevelUp(charId, nextLvl, hasCaracChoice, hasEpique, spellCount) {
-if (hasCaracChoice && !LVL_DRAFT.carac) return alert("Veuillez choisir une caractéristique (+1).");
+function renderCareerHistory(char, container) {
+const histBox = el('div', 'border space-y-2');
+histBox.appendChild(el('strong', '', 'Plan de carrière (du plus récent au niveau 1) :'));
+const d = char.data;
+for (let lvl = char.level; lvl >= 2; lvl--) {
+const row = el('div', 'border bg-stone-50');
+row.style.fontSize = '12px';
+const cGain = (d.level_caracs || {})[lvl];
+const compGain = (d.level_companions || {})[lvl];
+const tGains = (d.level_talents || {})[lvl] || new Array();
+const chGains = (d.level_talent_choices || {})[lvl];
+const sGains = (d.level_sorts || {})[lvl] || new Array();
+let txt = 'Niveau ' + lvl + ' : ';
+if (cGain) txt += '[+1 ' + cGain + '] ';
+if (compGain) {
+if (compGain.type === 'gain_suivant') txt += '[Suivant obtenu : ' + compGain.nom + '] ';
+if (compGain.type === 'gain_familier') txt += '[Familier obtenu : ' + compGain.nom + '] ';
+if (compGain.type === 'upgrade_suivant') txt += '[Suivant amélioré] ';
+if (compGain.type === 'upgrade_familier') txt += '[Familier amélioré] ';
+}
+txt += 'Talents : ' + (tGains.join(', ') || '—') + formatChoicesMap(chGains);
+if (sGains.length > 0) txt += ' | Sorts : ' + sGains.map(function(s) { return s.nom + ' (' + s.voie + ')'; }).join(', ');
+row.textContent = txt;
+histBox.appendChild(row);
+}
+const lvl1Row = el('div', 'border bg-stone-50');
+lvl1Row.style.fontSize = '12px';
+lvl1Row.textContent = 'Niveau 1 (Création) : ' + d.peuple + ' (+1 ' + d.peuple_carac + '), ' + d.culture + ' (+1 ' + d.culture_carac + '), ' + d.classe + ' | Talents : ' + (d.talents_lvl1 || new Array()).join(', ') + formatChoicesMap(d.talent_choices_lvl1);
+histBox.appendChild(lvl1Row);
+container.appendChild(histBox);
+}
+async function confirmLevelUp(charId, nextLvl, isPalier5, hasEpique, spellCount) {
+if (isPalier5 && !LVL_DRAFT.carac && !LVL_DRAFT.compAction) return alert("Veuillez choisir une caractéristique (+1) ou un compagnon (Suivant/Familier).");
 if (!LVL_DRAFT.t1 || !LVL_DRAFT.t2) return alert("Veuillez sélectionner les 2 talents communs.");
 if (hasEpique && !LVL_DRAFT.te) return alert("Veuillez sélectionner un talent épique.");
 if (getChoicesForTalent(LVL_DRAFT.t1, {}) && !LVL_DRAFT.t1Choice) return alert("Veuillez choisir une option pour " + LVL_DRAFT.t1 + ".");
@@ -1615,9 +1694,15 @@ if (getChoicesForTalent(LVL_DRAFT.t2, {}) && !LVL_DRAFT.t2Choice) return alert("
 if (hasEpique && getChoicesForTalent(LVL_DRAFT.te, {}) && !LVL_DRAFT.teChoice) return alert("Veuillez choisir une option pour " + LVL_DRAFT.te + ".");
 const char = CHARACTERS.find(function(c) { return c.id === charId; });
 const d = Object.assign({}, char.data);
-if (hasCaracChoice) {
+if (isPalier5) {
+if (LVL_DRAFT.compAction) {
+d.level_companions = Object.assign({}, d.level_companions || {});
+const defaultName = LVL_DRAFT.compAction === 'gain_suivant' ? 'Suivant' : 'Familier';
+d.level_companions[nextLvl] = { type: LVL_DRAFT.compAction, nom: (LVL_DRAFT.compName || '').trim() || defaultName };
+} else if (LVL_DRAFT.carac) {
 d.level_caracs = Object.assign({}, d.level_caracs || {});
 d.level_caracs[nextLvl] = LVL_DRAFT.carac;
+}
 }
 const gainedTalents = new Array(LVL_DRAFT.t1, LVL_DRAFT.t2);
 if (hasEpique) gainedTalents.push(LVL_DRAFT.te);
@@ -1640,12 +1725,10 @@ if (picked.some(function(s) { return !s || !s.nom; })) return alert("Veuillez s�
 d.level_sorts = Object.assign({}, d.level_sorts || {});
 d.level_sorts[nextLvl] = picked;
 }
-LVL_DRAFT = { charId: null, carac: '', t1: '', t1Choice: '', t2: '', t2Choice: '', te: '', teChoice: '', spells: new Array() };
+LVL_DRAFT = { charId: null, carac: '', compAction: '', compName: '', t1: '', t1Choice: '', t2: '', t2Choice: '', te: '', teChoice: '', spells: new Array() };
 await sb.from('characters').update({ level: nextLvl, effective_level: nextLvl, data: d }).eq('id', charId);
 alert("Passage au Niveau " + nextLvl + " validé !");
 }
-        
-
 async function revertLastLevel(charId) {
 const char = CHARACTERS.find(function(c) { return c.id === charId; });
 if (!char || char.level <= 1) return;
@@ -1654,13 +1737,15 @@ const oldLvl = char.level;
 const newLvl = oldLvl - 1;
 const d = Object.assign({}, char.data);
 if (d.level_caracs) delete d.level_caracs[oldLvl];
+if (d.level_companions) delete d.level_companions[oldLvl];
 if (d.level_talents) delete d.level_talents[oldLvl];
 if (d.level_talent_choices) delete d.level_talent_choices[oldLvl];
 if (d.level_sorts) delete d.level_sorts[oldLvl];
-LVL_DRAFT = { charId: null, carac: '', t1: '', t1Choice: '', t2: '', t2Choice: '', te: '', teChoice: '', spells: [] };
+LVL_DRAFT = { charId: null, carac: '', compAction: '', compName: '', t1: '', t1Choice: '', t2: '', t2Choice: '', te: '', teChoice: '', spells: new Array() };
 await sb.from('characters').update({ level: newLvl, effective_level: Math.min(char.effective_level, newLvl), data: d }).eq('id', charId);
 }
-  
+
+
 
 
 async function setEffectiveLevel(charId, lvl) {

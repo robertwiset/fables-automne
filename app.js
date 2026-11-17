@@ -438,7 +438,7 @@ function renderPlaySheet() {
   }
 
   const st = getEffectiveState(char);
-  document.getElementById('play-portrait').src = char.data.portrait || 'data:image/svg+xml;utf8,<svg xmlns="http://w3.org" width="64" height="64"><rect width="64" height="64" fill="%23d6d3d1"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-size="24" fill="%2357534e">?</text></svg>';
+  document.getElementById('play-portrait').src = char.data.portrait || 'data:image/svg+xml;utf8,<svg xmlns="http://w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="%23d6d3d1"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-size="24" fill="%2357534e">?</text></svg>';
   document.getElementById('play-char-badge').textContent = 'Niv. ' + char.effective_level + (char.effective_level !== char.level ? ' / ' + char.level : '');
   document.getElementById('play-char-subtitle').textContent = char.data.peuple + ' • ' + char.data.culture + ' • ' + char.data.classe + ' • Désir : ' + char.data.desir;
 
@@ -830,7 +830,7 @@ function initCreationForm() {
 
   const colPort = el('div', 'flex');
   const prevImg = el('img', 'portrait-img'); prevImg.id = 'c-portrait-preview';
-  prevImg.src = 'data:image/svg+xml;utf8,<svg xmlns="http://w3.org" width="64" height="64"><rect width="64" height="64" fill="%23d6d3d1"/></svg>';
+  prevImg.src = 'data:image/svg+xml;utf8,<svg xmlns="http://w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="%23d6d3d1"/></svg>';
  
   const inpFile = el('input', ''); inpFile.type = 'file'; inpFile.accept = 'image/*'; inpFile.style.fontSize = '11px';
   inpFile.onchange = function() { handlePortraitUpload(inpFile); };

@@ -1880,17 +1880,52 @@ async function resetCombat() {
 async function addToCombat(camp) {
   const charId = document.getElementById('combat-add-char').value;
   if (!charId || COMBAT.status === 'inactif') return alert("Démarrez d'abord un combat.");
-  const parts = (COMBAT.participants || []).slice();
+  const parts = (COMBAT.participants || new Array()).slice();
   if (parts.some(function(p) { return p.char_id === charId; })) return alert("Ce personnage est déjà dans le combat.");
-  parts.push({ char_id: charId, camp: camp, posture: 'Défensif', manoeuvre: 'Pas de manœuvre initiale', temp_att: 0, temp_def: 0 });
+  parts.push({ char_id: charId, camp: camp, posture: 'Défensif', manoeuvre: 'Pas de manœuvre initiale', ready: false, temp_att: 0, temp_def: 0 });
   await sb.from('combat_state').update({ participants: parts }).eq('id', 1);
 }
 
+function getEligibleManoeuvres(char, posture, phaseStatus) {
+  const st = getEffectiveState(char);
+  const rawList = phaseStatus === 'phase2' ? (RULES.manoeuvres_finales || new Array()) : (RULES.manoeuvres_initiales || new Array());
+  return rawList.filter(function(m) {
+    if (m.postures && m.postures.length > 0 && !m.postures.includes(posture)) return false;
+    if (m.talent && !st.talents.includes(m.talent)) return false;
+    return true;
+  });
+}
+
+function getAdjustedManoeuvreMods(st, manObj, posture) {
+  let mAtt = manObj.att || 0;
+  let mDef = manObj.def || 0;
+  if (manObj.nom === 'Charge' && st.talents.includes('Charge')) {
+    mAtt = Math.min(0, mAtt + 2);
+    mDef = Math.min(0, mDef + 2);
+  }
+  if (st.talents.includes('Prouesse')) {
+    if (mAtt < 0) mAtt = Math.min(0, mAtt + 1);
+    if (mDef < 0) mDef = Math.min(0, mDef + 1);
+  }
+  return { att: mAtt, def: mDef };
+}
+
 async function updateCombatParticipant(charId, field, value) {
+  const char = CHARACTERS.find(function(c) { return c.id === charId; });
   const parts = COMBAT.participants.map(function(p) {
     if (p.char_id !== charId) return p;
     const copy = Object.assign({}, p);
     copy[field] = value;
+    if (field === 'posture' && char) {
+      const elig = getEligibleManoeuvres(char, value, COMBAT.status);
+      if (!elig.some(function(m) { return m.nom === copy.manoeuvre; })) {
+        copy.manoeuvre = elig.at(0) ? elig.at(0).nom : '';
+      }
+      copy.ready = false;
+    }
+    if (field === 'manoeuvre') {
+      copy.ready = false;
+    }
     return copy;
   });
   await sb.from('combat_state').update({ participants: parts }).eq('id', 1);
@@ -1901,116 +1936,177 @@ async function removeFromCombat(charId) {
   await sb.from('combat_state').update({ participants: parts }).eq('id', 1);
 }
 
+async function rollCombatManoeuvreSkill(charId, compName, manName) {
+  const char = CHARACTERS.find(function(c) { return c.id === charId; });
+  if (!char || !compName) return;
+  const st = getEffectiveState(char);
+  const comp = RULES.competences.find(function(c) { return c.nom === compName; });
+  if (!comp) return alert("Compétence introuvable : " + compName);
+
+  const d1 = Math.floor(Math.random() * 6) + 1;
+  const d2 = Math.floor(Math.random() * 6) + 1;
+  const d3 = Math.floor(Math.random() * 6) + 1;
+  const diceSum = d1 + d2 + d3;
+  const res = computeSkillModifier(char, st, comp);
+  const total = diceSum + res.total;
+  const details = '3d6 (' + d1 + '+' + d2 + '+' + d3 + '=' + diceSum + ') | ' + res.parts.join(', ');
+
+  await sb.from('roll_history').insert({
+    character_id: char.id, owner_id: CURRENT_USER.id, character_name: char.name,
+    is_public: char.is_public, skill_name: 'Manœuvre (' + manName + ') : ' + compName, total: total, details: details
+  });
+  await refreshAllData(true);
+}
+
 function computeCombatStats(char, p) {
   const st = getEffectiveState(char);
   const posObj = RULES.postures.find(function(x) { return x.nom === p.posture; }) || RULES.postures.at(0);
   const mList = COMBAT.status === 'phase2' ? RULES.manoeuvres_finales : RULES.manoeuvres_initiales;
   const manObj = mList.find(function(x) { return x.nom === p.manoeuvre; }) || { att: 0, def: 0 };
+  const adjMan = getAdjustedManoeuvreMods(st, manObj, p.posture);
 
   const defaultFists = { nom: "Poings", categorie: "Arme", famille: "Lutte", mains: 1, poids: 0, force_min: 5, degat: 0, portee: 0 };
   const mainWeapon = st.equipped['MainPrincipale'] || st.inv.at(st.worn['MainPrincipale']) || defaultFists;
   const secItem = st.equipped['MainSecondaire'] || st.inv.at(st.worn['MainSecondaire']) || null;
 
-  const isRanged = ['Arcs', 'Arbalètes', 'Frondes', 'Armes de jet'].includes(mainWeapon.famille);
+  const isRanged = new Array('Arcs', 'Arbalètes', 'Frondes', 'Armes de jet').includes(mainWeapon.famille);
   const cov = getCoverTotals();
 
   let attCarac = (st.caracs['Force'] || 10) - 10;
   if (st.talents.includes('Finesse') && st.caracs['Force'] >= (mainWeapon.force_min || 5) + 1) {
-attCarac = Math.max(attCarac, (st.caracs['Agilité'] || 10) - 10);
+    attCarac = Math.max(attCarac, (st.caracs['Agilité'] || 10) - 10);
+  }
+  let att = attCarac + (mainWeapon.degat || 0) + posObj.att + adjMan.att + st.emotionObj.att - st.fatigue - st.maxWoundMalus + (parseInt(p.temp_att) || 0);
+
+  if (st.caracs['Force'] < (mainWeapon.force_min || 5)) att -= ((mainWeapon.force_min || 5) - st.caracs['Force']);
+  if (secItem) {
+    if (secItem.categorie === 'Arme') att += (secItem.degat || 0);
+    if (!st.talents.includes('Ambidextrie')) att -= 2;
+  }
+  if (st.talents.includes('Entraînement aux armes')) att += 1;
+  if (st.talents.includes('Balayage') && mainWeapon.mains === 2 && !isRanged) att += 2;
+  if (st.talents.includes('Charge') && p.posture === 'Agressif') att += 1;
+  if (st.talents.includes('Tirailleur') && p.posture === 'Repli' && isRanged) att += 1;
+  if (st.talents.includes('Acuité') && isRanged) att += 1;
+  if (st.talents.includes('Rage') && p.posture === 'Agressif' && !isRanged) att += 2;
+
+  if (posObj.couv_att === 'malus') att += cov.malus;
+  if (posObj.couv_att === 'bonus') att += cov.bonus * (st.talents.includes('Opportunisme') ? 2 : 1);
+  att = Math.max(0, att);
+
+  let def = ((st.caracs['Agilité'] || 10) - 10) + st.armorDef + posObj.def + adjMan.def + st.emotionObj.def - st.fatigue - st.maxWoundMalus + (parseInt(p.temp_def) || 0);
+  if (!posObj.sans_portee) def += (mainWeapon.portee || 0);
+  if (secItem && secItem.categorie === 'Bouclier') def += (secItem.def || 0);
+  if (st.talents.includes('Esquive')) def += 1;
+  if (st.talents.includes('Parade') && !isRanged && mainWeapon.nom !== 'Poings') def += 1;
+  if (st.talents.includes('Rempart') && p.posture === 'Défensif') def += 1;
+  if (st.talents.includes('Volée') && p.posture === 'Défensif' && new Array('Arcs', 'Arbalètes', 'Frondes').includes(mainWeapon.famille)) def += 1;
+  if (st.talents.includes('Tirailleur') && p.posture === 'Repli' && isRanged) def += 1;
+  if (st.talents.includes('Acuité') && isRanged) def += 1;
+  if (st.talents.includes('Ténacité') && p.posture === 'Défensif' && !isRanged) def += 2;
+
+  if (posObj.couv_def === 'malus') def += cov.malus;
+  if (posObj.couv_def === 'bonus') def += cov.bonus * (st.talents.includes('Opportunisme') ? 2 : 1);
+  def = Math.max(0, def);
+
+  return { att: att, def: def };
 }
-let att = attCarac + (mainWeapon.degat || 0) + posObj.att + (manObj.att || 0) + st.emotionObj.att - st.fatigue - st.maxWoundMalus + (parseInt(p.temp_att) || 0);
-if (st.caracs['Force'] < (mainWeapon.force_min || 5)) att -= ((mainWeapon.force_min || 5) - st.caracs['Force']);
-if (secItem) {
-if (secItem.categorie === 'Arme') att += (secItem.degat || 0);
-if (!st.talents.includes('Ambidextrie')) att -= 2;
-}
-if (st.talents.includes('Entraînement aux armes')) att += 1;
-if (st.talents.includes('Balayage') && mainWeapon.mains === 2 && !isRanged) att += 2;
-if (st.talents.includes('Charge') && p.posture === 'Agressif') att += 1;
-if (st.talents.includes('Tirailleur') && p.posture === 'Repli' && isRanged) att += 1;
-if (st.talents.includes('Acuité') && isRanged) att += 1;
-if (st.talents.includes('Rage') && p.posture === 'Agressif' && !isRanged) att += 2;
-if (posObj.couv_att === 'malus') att += cov.malus;
-if (posObj.couv_att === 'bonus') att += cov.bonus * (st.talents.includes('Opportunisme') ? 2 : 1);
-att = Math.max(0, att);
-let def = ((st.caracs['Agilité'] || 10) - 10) + st.armorDef + posObj.def + (manObj.def || 0) + st.emotionObj.def - st.fatigue - st.maxWoundMalus + (parseInt(p.temp_def) || 0);
-if (!posObj.sans_portee) def += (mainWeapon.portee || 0);
-if (secItem && secItem.categorie === 'Bouclier') def += (secItem.def || 0);
-if (st.talents.includes('Esquive')) def += 1;
-if (st.talents.includes('Parade') && !isRanged && mainWeapon.nom !== 'Poings') def += 1;
-if (st.talents.includes('Rempart') && p.posture === 'Défensif') def += 1;
-if (st.talents.includes('Volée') && p.posture === 'Défensif' && ['Arcs', 'Arbalètes', 'Frondes'].includes(mainWeapon.famille)) def += 1;
-if (st.talents.includes('Tirailleur') && p.posture === 'Repli' && isRanged) def += 1;
-if (st.talents.includes('Acuité') && isRanged) def += 1;
-if (st.talents.includes('Ténacité') && p.posture === 'Défensif' && !isRanged) def += 2;
-if (posObj.couv_def === 'malus') def += cov.malus;
-if (posObj.couv_def === 'bonus') def += cov.bonus * (st.talents.includes('Opportunisme') ? 2 : 1);
-def = Math.max(0, def);
-return { att: att, def: def };
-}
+
 async function rollCombatCamp(camp) {
-const dieMax = COMBAT.combat_type === 'duel' ? 12 : 20;
-const roll = Math.floor(Math.random() * dieMax) + 1;
-const updateObj = camp === 'A' ? { roll_camp_a: roll } : { roll_camp_b: roll };
-const rollA = camp === 'A' ? roll : COMBAT.roll_camp_a;
-const rollB = camp === 'B' ? roll : COMBAT.roll_camp_b;
-if (rollA !== null && rollB !== null) {
-let attA = 0, defA = 0, attB = 0, defB = 0;
-COMBAT.participants.forEach(function(p) {
-const char = CHARACTERS.find(function(c) { return c.id === p.char_id; });
-if (!char) return;
-const stats = computeCombatStats(char, p);
-if (p.camp === 'A') { attA += stats.att; defA += stats.def; }
-else { attB += stats.att; defB += stats.def; }
-});
-const scoreA = Math.max(0, (attA + rollA) - defB);
-const scoreB = Math.max(0, (attB + rollB) - defA);
-const woundsToB = Math.floor(scoreA / 8);
-const woundsToA = Math.floor(scoreB / 8);
-const res = { attA: attA, defA: defA, rollA: rollA, scoreA: scoreA, woundsToB: woundsToB, attB: attB, defB: defB, rollB: rollB, scoreB: scoreB, woundsToA: woundsToA };
-if (COMBAT.status === 'phase1') updateObj.phase1_result = res;
-else updateObj.phase2_result = res;
+  const parts = COMBAT.participants || new Array();
+  if (parts.length === 0) return alert("Ajoutez au moins un participant avant de lancer les dés.");
+  if (!parts.every(function(p) { return p.ready; })) {
+    return alert("Tous les personnages doivent être marqués 'Prêt' avant de lancer les dés.");
+  }
+
+  const dieMax = COMBAT.combat_type === 'duel' ? 12 : 20;
+  const roll = Math.floor(Math.random() * dieMax) + 1;
+  const updateObj = camp === 'A' ? { roll_camp_a: roll } : { roll_camp_b: roll };
+  const rollA = camp === 'A' ? roll : COMBAT.roll_camp_a;
+  const rollB = camp === 'B' ? roll : COMBAT.roll_camp_b;
+
+  if (rollA !== null && rollB !== null) {
+    let attA = 0, defA = 0, attB = 0, defB = 0;
+    parts.forEach(function(p) {
+      const char = CHARACTERS.find(function(c) { return c.id === p.char_id; });
+      if (!char) return;
+      const stats = computeCombatStats(char, p);
+      if (p.camp === 'A') { attA += stats.att; defA += stats.def; }
+      else { attB += stats.att; defB += stats.def; }
+    });
+    const scoreA = Math.max(0, (attA + rollA) - defB);
+    const scoreB = Math.max(0, (attB + rollB) - defA);
+    const woundsToB = Math.floor(scoreA / 8);
+    const woundsToA = Math.floor(scoreB / 8);
+    const res = { attA: attA, defA: defA, rollA: rollA, scoreA: scoreA, woundsToB: woundsToB, attB: attB, defB: defB, rollB: rollB, scoreB: scoreB, woundsToA: woundsToA };
+    if (COMBAT.status === 'phase1') updateObj.phase1_result = res;
+    else updateObj.phase2_result = res;
+  }
+  await sb.from('combat_state').update(updateObj).eq('id', 1);
 }
-await sb.from('combat_state').update(updateObj).eq('id', 1);
-}
+
 async function nextCombatPhase() {
-const parts = COMBAT.participants.map(function(p) {
-return Object.assign({}, p, { manoeuvre: 'Pas de manœuvre finale', temp_att: 0, temp_def: 0 });
-});
-await sb.from('combat_state').update({ status: 'phase2', participants: parts, roll_camp_a: null, roll_camp_b: null }).eq('id', 1);
+  if (!COMBAT || COMBAT.status !== 'phase1') return;
+  const parts = (COMBAT.participants || new Array()).map(function(p) {
+    const char = CHARACTERS.find(function(c) { return c.id === p.char_id; });
+    const elig = char ? getEligibleManoeuvres(char, p.posture, 'phase2') : new Array();
+    const defaultMan = elig.at(0) ? elig.at(0).nom : 'Pas de manœuvre finale';
+    return Object.assign({}, p, { manoeuvre: defaultMan, ready: false, temp_att: 0, temp_def: 0 });
+  });
+  await sb.from('combat_state').update({ status: 'phase2', participants: parts, roll_camp_a: null, roll_camp_b: null, phase2_result: null }).eq('id', 1);
 }
+
 function renderCombat() {
-const statusEl = document.getElementById('combat-status-banner');
-const resBox = document.getElementById('combat-results-box');
-if (!COMBAT || COMBAT.status === 'inactif') {
-statusEl.textContent = "Aucun combat en cours.";
-document.getElementById('combat-list-a').innerHTML = '';
-document.getElementById('combat-list-b').innerHTML = '';
-resBox.classList.add('hidden');
-return;
-}
-statusEl.textContent = 'Combat (' + COMBAT.combat_type.toUpperCase() + ') — ' + (COMBAT.status === 'phase1' ? 'PHASE INITIALE' : 'PHASE FINALE');
-document.getElementById('btn-roll-a').disabled = COMBAT.roll_camp_a !== null;
-document.getElementById('btn-roll-b').disabled = COMBAT.roll_camp_b !== null;
-['A', 'B'].forEach(function(camp) {
+  const statusEl = document.getElementById('combat-status-banner');
+  const resBox = document.getElementById('combat-results-box');
+  if (!COMBAT || COMBAT.status === 'inactif') {
+    statusEl.textContent = "Aucun combat en cours.";
+    document.getElementById('combat-list-a').innerHTML = '';
+    document.getElementById('combat-list-b').innerHTML = '';
+    resBox.classList.add('hidden');
+    return;
+  }
+
+  const allParts = COMBAT.participants || new Array();
+  const readyCount = allParts.filter(function(p) { return p.ready; }).length;
+  const allReady = allParts.length > 0 && readyCount === allParts.length;
+
+  statusEl.textContent = 'Combat (' + COMBAT.combat_type.toUpperCase() + ') — ' + (COMBAT.status === 'phase1' ? 'PHASE INITIALE' : 'PHASE FINALE') + ' | Prêts : ' + readyCount + '/' + allParts.length;
+
+  const btnA = document.getElementById('btn-roll-a');
+
+const btnB = document.getElementById('btn-roll-b');
+btnA.disabled = !allReady || COMBAT.roll_camp_a !== null;
+btnB.disabled = !allReady || COMBAT.roll_camp_b !== null;
+btnA.textContent = COMBAT.roll_camp_a !== null ? ('Dé Camp A : ' + COMBAT.roll_camp_a) : (allReady ? 'Lancer dé Camp A' : 'En attente des joueurs prêts');
+btnB.textContent = COMBAT.roll_camp_b !== null ? ('Dé Camp B : ' + COMBAT.roll_camp_b) : (allReady ? 'Lancer dé Camp B' : 'En attente des joueurs prêts');
+new Array('A', 'B').forEach(function(camp) {
 const listEl = document.getElementById(camp === 'A' ? 'combat-list-a' : 'combat-list-b');
 listEl.innerHTML = '';
-const campParts = (COMBAT.participants || []).filter(function(p) { return p.camp === camp; });
+const campParts = allParts.filter(function(p) { return p.camp === camp; });
 campParts.forEach(function(p) {
 const char = CHARACTERS.find(function(c) { return c.id === p.char_id; });
 if (!char) return;
 const isOwner = char.owner_id === CURRENT_USER.id;
 const visible = char.is_public || isOwner;
 const stats = computeCombatStats(char, p);
-const mList = COMBAT.status === 'phase2' ? RULES.manoeuvres_finales : RULES.manoeuvres_initiales;
-const card = el('div', 'border bg-stone-50 space-y-2');
+const eligList = getEligibleManoeuvres(char, p.posture, COMBAT.status);
+const selManObj = eligList.find(function(m) { return m.nom === p.manoeuvre; }) || eligList.at(0) || { nom: '', comp: null, effet: '' };
+const card = el('div', 'border space-y-2 ' + (p.ready ? 'bg-amber-50' : 'bg-stone-50'));
 const top = el('div', 'flex justify-between');
 top.appendChild(el('strong', '', char.name + (visible ? ' (Att: ' + stats.att + ' | Déf: ' + stats.def + ')' : ' (Masqué)')));
+const rightCtrl = el('div', 'flex');
 if (isOwner) {
+const bReady = el('button', p.ready ? 'bg-emerald-700' : '', p.ready ? 'Prêt ✓' : 'Pas prêt');
+bReady.style.fontSize = '11px';
+bReady.onclick = function() { updateCombatParticipant(char.id, 'ready', !p.ready); };
 const bRem = el('button', '', 'Retirer'); bRem.style.color = '#dc2626'; bRem.style.fontSize = '11px';
 bRem.onclick = function() { removeFromCombat(char.id); };
-top.appendChild(bRem);
+rightCtrl.appendChild(bReady); rightCtrl.appendChild(bRem);
+} else {
+rightCtrl.appendChild(el('span', '', p.ready ? 'Prêt ✓' : 'En choix...'));
 }
+top.appendChild(rightCtrl);
 card.appendChild(top);
 if (isOwner) {
 const ctrl = el('div', 'flex');
@@ -2022,18 +2118,36 @@ selPos.appendChild(o);
 });
 selPos.onchange = function() { updateCombatParticipant(char.id, 'posture', selPos.value); };
 const selMan = el('select', '');
-mList.forEach(function(m) {
-const o = el('option', '', m.nom); o.value = m.nom;
+eligList.forEach(function(m) {
+const st = getEffectiveState(char);
+const adj = getAdjustedManoeuvreMods(st, m, p.posture);
+const o = el('option', '', m.nom + ' (Att ' + adj.att + ', Déf ' + adj.def + ')'); o.value = m.nom;
 if (p.manoeuvre === m.nom) o.selected = true;
 selMan.appendChild(o);
 });
 selMan.onchange = function() { updateCombatParticipant(char.id, 'manoeuvre', selMan.value); };
-const inpAtt = el('input', ''); inpAtt.type = 'number'; inpAtt.value = p.temp_att || 0; inpAtt.style.width = '50px';
+const inpAtt = el('input', ''); inpAtt.type = 'number'; inpAtt.value = p.temp_att || 0; inpAtt.style.width = '50px'; inpAtt.title = 'Bonus/Malus temporaire Attaque';
 inpAtt.onchange = function() { updateCombatParticipant(char.id, 'temp_att', inpAtt.value); };
-const inpDef = el('input', ''); inpDef.type = 'number'; inpDef.value = p.temp_def || 0; inpDef.style.width = '50px';
+const inpDef = el('input', ''); inpDef.type = 'number'; inpDef.value = p.temp_def || 0; inpDef.style.width = '50px'; inpDef.title = 'Bonus/Malus temporaire Défense';
 inpDef.onchange = function() { updateCombatParticipant(char.id, 'temp_def', inpDef.value); };
 ctrl.appendChild(selPos); ctrl.appendChild(selMan); ctrl.appendChild(inpAtt); ctrl.appendChild(inpDef);
 card.appendChild(ctrl);
+if (selManObj && selManObj.effet) {
+const infoBox = el('div', 'border space-y-2');
+infoBox.style.background = '#fff'; infoBox.style.fontSize = '11px';
+infoBox.appendChild(el('div', '', selManObj.effet));
+if (selManObj.comp) {
+const st = getEffectiveState(char);
+const compObj = RULES.competences.find(function(c) { return c.nom === selManObj.comp; });
+const mod = compObj ? computeSkillModifier(char, st, compObj).total : 0;
+const sign = mod >= 0 ? '+' : '';
+const bTest = el('button', 'bg-amber-800', 'Tester ' + selManObj.comp + ' (3d6 ' + sign + mod + ')');
+bTest.style.fontSize = '11px';
+bTest.onclick = function() { rollCombatManoeuvreSkill(char.id, selManObj.comp, selManObj.nom); };
+infoBox.appendChild(bTest);
+}
+card.appendChild(infoBox);
+}
 } else {
 card.appendChild(el('div', '', 'Posture : ' + p.posture + (visible ? ' | Manœuvre : ' + p.manoeuvre : '')));
 }
@@ -2050,7 +2164,7 @@ const box = el('div', 'border bg-amber-50 space-y-2');
 box.appendChild(el('strong', '', 'Résultat ' + (isInitial ? 'Phase Initiale' : 'Phase Finale') + ' :'));
 box.appendChild(el('div', '', 'Camp A : Attaque ' + res.attA + ' + Dé (' + res.rollA + ') - Déf B (' + res.defB + ') = Score ' + res.scoreA + ' -> ' + res.woundsToB + ' blessure(s) infligée(s) au Camp B'));
 box.appendChild(el('div', '', 'Camp B : Attaque ' + res.attB + ' + Dé (' + res.rollB + ') - Déf A (' + res.defA + ') = Score ' + res.scoreB + ' -> ' + res.woundsToA + ' blessure(s) infligée(s) au Camp A'));
-box.appendChild(el('div', '', isInitial ? 'Tour initial : chaque camp répartit les blessures qu’il inflige à l’adversaire.' : 'Tour final : chaque camp répartit entre ses membres les blessures qu’il subit.'));
+box.appendChild(el('div', '', isInitial ? 'Tour initial : chaque camp répartit les blessures qu’il inflige à l’adversaire. Cliquez ensuite sur "Phase Finale".' : 'Tour final : chaque camp répartit entre ses membres les blessures qu’il subit.'));
 if (!isInitial || COMBAT.combat_type === 'escarmouche') {
 box.appendChild(el('strong', '', 'Vainqueur : ' + winner + ' (Score de Victoire : ' + Math.abs(res.scoreA - res.scoreB) + ')'));
 }
@@ -2059,4 +2173,6 @@ resBox.appendChild(box);
 resBox.classList.add('hidden');
 }
 }
+
+
 init();

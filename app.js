@@ -2123,11 +2123,12 @@ card.appendChild(el('div', '', 'Posture : ' + p.posture + (visible ? ' | Manœuv
 listEl.appendChild(card);
 });
 });
-const res = COMBAT.status === 'phase2' && COMBAT.phase2_result ? COMBAT.phase2_result : COMBAT.phase1_result;
+const res = COMBAT.status === 'phase2' ? COMBAT.phase2_result : COMBAT.phase1_result;
 if (res) {
 resBox.classList.remove('hidden');
 resBox.innerHTML = '';
-const isInitial = COMBAT.status === 'phase1' && !COMBAT.phase2_result;
+const isInitial = COMBAT.status === 'phase1';
+
 const winner = res.scoreA > res.scoreB ? 'Camp A' : (res.scoreB > res.scoreA ? 'Camp B' : 'Égalité');
 const box = el('div', 'border bg-amber-50 space-y-2');
 box.appendChild(el('strong', '', 'Résultat ' + (isInitial ? 'Phase Initiale' : 'Phase Finale') + ' :'));

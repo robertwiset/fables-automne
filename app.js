@@ -1937,28 +1937,6 @@ async function removeFromCombat(charId) {
   await sb.from('combat_state').update({ participants: parts }).eq('id', 1);
 }
 
-async function rollCombatManoeuvreSkill(charId, compName, manName) {
-  const char = CHARACTERS.find(function(c) { return c.id === charId; });
-  if (!char || !compName) return;
-  const st = getEffectiveState(char);
-  const comp = RULES.competences.find(function(c) { return c.nom === compName; });
-  if (!comp) return alert("Compétence introuvable : " + compName);
-
-  const d1 = Math.floor(Math.random() * 6) + 1;
-  const d2 = Math.floor(Math.random() * 6) + 1;
-  const d3 = Math.floor(Math.random() * 6) + 1;
-  const diceSum = d1 + d2 + d3;
-  const res = computeSkillModifier(char, st, comp);
-  const total = diceSum + res.total;
-  const details = '3d6 (' + d1 + '+' + d2 + '+' + d3 + '=' + diceSum + ') | ' + res.parts.join(', ');
-
-  await sb.from('roll_history').insert({
-    character_id: char.id, owner_id: CURRENT_USER.id, character_name: char.name,
-    is_public: char.is_public, skill_name: 'Manœuvre (' + manName + ') : ' + compName, total: total, details: details
-  });
-  await refreshAllData(true);
-}
-
 function computeCombatStats(char, p) {
   const st = getEffectiveState(char);
   const posObj = RULES.postures.find(function(x) { return x.nom === p.posture; }) || RULES.postures.at(0);
@@ -2137,16 +2115,6 @@ if (selManObj && selManObj.effet) {
 const infoBox = el('div', 'border space-y-2');
 infoBox.style.background = '#fff'; infoBox.style.fontSize = '11px';
 infoBox.appendChild(el('div', '', selManObj.effet));
-if (selManObj.comp) {
-const st = getEffectiveState(char);
-const compObj = RULES.competences.find(function(c) { return c.nom === selManObj.comp; });
-const mod = compObj ? computeSkillModifier(char, st, compObj).total : 0;
-const sign = mod >= 0 ? '+' : '';
-const bTest = el('button', 'bg-amber-800', 'Tester ' + selManObj.comp + ' (3d6 ' + sign + mod + ')');
-bTest.style.fontSize = '11px';
-bTest.onclick = function() { rollCombatManoeuvreSkill(char.id, selManObj.comp, selManObj.nom); };
-infoBox.appendChild(bTest);
-}
 card.appendChild(infoBox);
 }
 } else {

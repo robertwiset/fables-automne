@@ -1899,7 +1899,7 @@ function getEligibleManoeuvres(char, posture, phaseStatus) {
 function getAdjustedManoeuvreMods(st, manObj, posture) {
   let mAtt = manObj.att || 0;
   let mDef = manObj.def || 0;
-  if (manObj.nom === 'Charge' && st.talents.includes('Charge')) {
+  if (manObj.nom === 'Renversement' && st.talents.includes('Charge')) {
     mAtt = Math.min(0, mAtt + 2);
     mDef = Math.min(0, mDef + 2);
   }
@@ -1909,6 +1909,7 @@ function getAdjustedManoeuvreMods(st, manObj, posture) {
   }
   return { att: mAtt, def: mDef };
 }
+
 
 async function updateCombatParticipant(charId, field, value) {
   const char = CHARACTERS.find(function(c) { return c.id === charId; });

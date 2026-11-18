@@ -480,6 +480,7 @@ function renderPlaySheet() {
 
   renderHealthBlock(char, st, healthMount, true);
   renderMagicBlock(char, st, magicMount);
+  window.scrollTo(0, savedScrollY);
 }
 
 function getDefaultRituelState() {

@@ -421,6 +421,7 @@ function onSelectPlayChar() {
 }
 
 function renderPlaySheet() {
+  const savedScrollY = window.scrollY;
   const charId = document.getElementById('active-char-select').value;
   const char = CHARACTERS.find(function(c) { return c.id === charId; });
   const colsDiv = document.getElementById('carac-skill-columns');

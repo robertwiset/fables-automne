@@ -133,14 +133,17 @@ function toggleFold(id) {
 }
 
 function switchTab(tab) {
-  ['play', 'combat', 'manage'].forEach(function(t) {
+  new Array('play', 'combat', 'manage', 'destiny').forEach(function(t) {
     document.getElementById('tab-' + t).classList.toggle('hidden', t !== tab);
     const btn = document.getElementById('tab-btn-' + t);
-    btn.className = (t === tab) ? 'bg-amber-700' : '';
-    btn.style.background = (t === tab) ? '#92400e' : '#57534e';
-    btn.style.color = '#fff';
+    if (btn) {
+      btn.className = (t === tab) ? 'bg-amber-700' : '';
+      btn.style.background = (t === tab) ? '#92400e' : '#57534e';
+      btn.style.color = '#fff';
+    }
   });
 }
+
 async function init() {
   const res = await sb.auth.getSession();
   if (res.data && res.data.session) {
@@ -189,7 +192,7 @@ async function refreshAllData(force) {
   const results = await Promise.all([
     sb.from('characters').select('*').order('created_at', { ascending: true }),
     sb.from('scene_state').select('*').eq('id', 1).single(),
-    sb.from('roll_history').select('*').order('created_at', { ascending: false }).limit(40),
+    sb.from('roll_history').select('*').order('created_at', { ascending: false }).limit(500),
     sb.from('combat_state').select('*').eq('id', 1).single()
   ]);
   const newChars = results.at(0).data || [];
@@ -215,6 +218,7 @@ async function refreshAllData(force) {
   renderRollHistory();
   renderManageSheet();
   renderCombat();
+  renderDestiny();
 }
 
 function getEffectiveState(char) {
@@ -2630,6 +2634,156 @@ cancelFreeCreation();
 alert(name + " créé avec succès !");
 await refreshAllData(true);
 switchTab('play');
+}
+
+async function toggleDestinyTracking(charId, isTracked) {
+  await updateCharField(charId, 'track_destiny', isTracked);
+}
+
+function extractRaw3d6(detailsStr) {
+  if (!detailsStr) return null;
+  const match = detailsStr.match(/3d6\s*\(\d+\+\d+\+\d+=(\d+)\)/i);
+  return match ? parseInt(match[1], 10) : null;
+}
+
+function renderDestiny() {
+  const optBar = document.getElementById('destiny-optin-bar');
+  const mount = document.getElementById('destiny-gauge-mount');
+  if (!optBar || !mount) return;
+
+  optBar.innerHTML = '';
+  mount.innerHTML = '';
+
+  const myChars = CHARACTERS.filter(function(c) { return c.owner_id === CURRENT_USER.id; });
+  optBar.appendChild(el('strong', '', 'Mes personnages suivis :'));
+  if (myChars.length === 0) {
+    optBar.appendChild(el('span', '', 'Aucun personnage créé.'));
+  } else {
+    myChars.forEach(function(c) {
+      const lbl = el('label', 'flex');
+      lbl.style.background = '#fff'; lbl.style.padding = '3px 8px'; lbl.style.borderRadius = '6px'; lbl.style.border = '1px solid #d6d3d1';
+      const chk = el('input', '');
+      chk.type = 'checkbox';
+      chk.checked = Boolean(c.data && c.data.track_destiny);
+      chk.onchange = function() { toggleDestinyTracking(c.id, chk.checked); };
+      lbl.appendChild(chk);
+      lbl.appendChild(document.createTextNode(c.name));
+      optBar.appendChild(lbl);
+    });
+  }
+
+  const trackedChars = CHARACTERS.filter(function(c) { return c.data && c.data.track_destiny; });
+  if (trackedChars.length === 0) {
+    const emptyMsg = el('div', 'border bg-stone-50', 'Aucun personnage n’est actuellement inscrit au suivi du Destin. Cochez un personnage ci-dessus pour l’afficher sur la jauge.');
+    emptyMsg.style.fontSize = '13px'; emptyMsg.style.color = '#57534e';
+    mount.appendChild(emptyMsg);
+    return;
+  }
+
+  const rangeMode = document.getElementById('destiny-range') ? document.getElementById('destiny-range').value : 'all';
+  const cutoff24h = Date.now() - (24 * 60 * 60 * 1000);
+
+  const rulerWrap = el('div', 'border bg-stone-50 space-y-3');
+  rulerWrap.style.padding = '16px';
+
+  const scaleHeader = el('div', 'flex justify-between');
+  scaleHeader.style.fontSize = '11px'; scaleHeader.style.fontWeight = 'bold'; scaleHeader.style.color = '#78350f';
+  scaleHeader.appendChild(el('span', '', '3 (Poisse absolue)'));
+  scaleHeader.appendChild(el('span', '', '10,5 (Équilibre du Destin)'));
+  scaleHeader.appendChild(el('span', '', '18 (Béni des dieux)'));
+  rulerWrap.appendChild(scaleHeader);
+
+  const gradBar = el('div', '');
+  gradBar.style.position = 'relative';
+  gradBar.style.height = '14px';
+  gradBar.style.borderRadius = '999px';
+  gradBar.style.background = 'linear-gradient(90deg, #be123c 0%, #f59e0b 50%, #047857 100%)';
+
+  const midTick = el('div', '');
+  midTick.style.position = 'absolute';
+  midTick.style.left = '50%';
+  midTick.style.top = '-4px';
+  midTick.style.bottom = '-4px';
+  midTick.style.width = '2px';
+  midTick.style.background = '#1c1917';
+  gradBar.appendChild(midTick);
+  rulerWrap.appendChild(gradBar);
+
+  const lanes = el('div', 'space-y-3');
+  lanes.style.marginTop = '12px';
+
+  trackedChars.forEach(function(char) {
+    let charRolls = ROLLS.filter(function(r) {
+      if (r.character_id !== char.id) return false;
+      if (extractRaw3d6(r.details) === null) return false;
+      if (rangeMode === '24h' && r.created_at) {
+        return new Date(r.created_at).getTime() >= cutoff24h;
+      }
+      return true;
+    });
+
+    if (rangeMode === 'last10') {
+      charRolls = charRolls.slice(0, 10);
+    }
+
+    const values = charRolls.map(function(r) { return extractRaw3d6(r.details); }).filter(function(v) { return v !== null; });
+    const lane = el('div', 'border');
+    lane.style.background = '#fff'; lane.style.position = 'relative'; lane.style.padding = '8px 12px';
+
+    if (values.length === 0) {
+      lane.style.fontSize = '12px'; lane.style.color = '#78716c';
+      lane.textContent = char.name + ' — Aucun test 3D6 enregistré sur cette période.';
+      lanes.appendChild(lane);
+      return;
+    }
+
+    const sum = values.reduce(function(a, b) { return a + b; }, 0);
+    const avg = sum / values.length;
+    const pct = Math.max(0, Math.min(100, ((avg - 3) / 15) * 100));
+
+    const track = el('div', '');
+    track.style.position = 'relative';
+    track.style.height = '44px';
+
+    const guide = el('div', '');
+    guide.style.position = 'absolute'; guide.style.left = '0'; guide.style.right = '0'; guide.style.top = '21px';
+    guide.style.height = '2px'; guide.style.background = '#e7e5e4';
+    track.appendChild(guide);
+
+    const midLine = el('div', '');
+    midLine.style.position = 'absolute'; midLine.style.left = '50%'; midLine.style.top = '6px'; midLine.style.bottom = '6px';
+    midLine.style.width = '1px'; midLine.style.borderLeft = '1px dashed #a8a29e';
+    track.appendChild(midLine);
+
+    const marker = el('div', 'flex');
+    marker.style.position = 'absolute';
+    marker.style.left = pct.toFixed(1) + '%';
+    marker.style.top = '4px';
+    marker.style.transform = 'translateX(-50%)';
+    marker.style.background = '#fffbeb';
+    marker.style.border = '2px solid #92400e';
+    marker.style.borderRadius = '999px';
+    marker.style.padding = '2px 8px 2px 3px';
+    marker.style.whiteSpace = 'nowrap';
+    marker.style.boxShadow = '0 1px 4px rgba(0,0,0,0.15)';
+    marker.style.zIndex = '2';
+
+    const avatar = el('img', '');
+    avatar.src = char.data.portrait || 'data:image/svg+xml;utf8,<svg xmlns="http://w3.org" width="24" height="24"><rect width="24" height="24" fill="%23d6d3d1"/></svg>';
+    avatar.style.width = '24px'; avatar.style.height = '24px'; avatar.style.borderRadius = '50%'; avatar.style.objectFit = 'cover';
+
+    const label = el('span', '', char.name + ' : ' + avg.toFixed(2) + ' (' + values.length + ' jets)');
+    label.style.fontSize = '12px'; label.style.fontWeight = 'bold';
+
+    marker.appendChild(avatar);
+    marker.appendChild(label);
+    track.appendChild(marker);
+    lane.appendChild(track);
+    lanes.appendChild(lane);
+  });
+
+  rulerWrap.appendChild(lanes);
+  mount.appendChild(rulerWrap);
 }
 
 

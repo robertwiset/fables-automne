@@ -64,6 +64,8 @@
           <button id="tab-btn-play" onclick="switchTab('play')" class="bg-amber-700">Feuille de personnage</button>
           <button id="tab-btn-combat" onclick="switchTab('combat')" style="background:#57534e; color:#fff; border:none;">Scène &amp; Combat</button>
           <button id="tab-btn-manage" onclick="switchTab('manage')" style="background:#57534e; color:#fff; border:none;">Gestion &amp; Création</button>
+          <button id="tab-btn-destiny" onclick="switchTab('destiny')" style="background:#57534e; color:#fff; border:none;">Destin</button>
+
         </nav>
       </div>
       <div class="flex" style="font-size:12px;">
@@ -199,6 +201,20 @@
             </div>
 
             <div id="manage-sheet-container" class="space-y-4"></div>
+          </div>
+        </section>
+        <section id="tab-destiny" class="hidden space-y-4">
+          <div class="card space-y-3">
+            <div class="flex justify-between">
+              <h3 style="margin:0;">Le Destin — Jauge de chance pure (3D6 bruts)</h3>
+              <select id="destiny-range" onchange="renderDestiny()">
+                <option value="all">Intégralité des données</option>
+                <option value="24h">Dernières 24h</option>
+                <option value="last10">10 derniers lancers</option>
+              </select>
+            </div>
+            <div id="destiny-optin-bar" class="border bg-stone-50 flex" style="font-size:12px;"></div>
+            <div id="destiny-gauge-mount" class="space-y-4"></div>
           </div>
         </section>
       </div>

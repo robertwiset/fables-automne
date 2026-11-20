@@ -187,12 +187,17 @@
               <h3 style="margin:0;">Gestion des personnages (Niveaux, Équipement, Droits)</h3>
               <div class="flex">
                 <select id="sheet-char-select" onchange="renderManageSheet()"></select>
-                <button onclick="toggleCreateForm()" class="bg-amber-800">+ Nouveau personnage</button>
+                  <button onclick="toggleCreateForm()" class="bg-amber-800">+ Nouveau personnage</button>
+                  <button onclick="toggleFreeCreateForm()" class="bg-purple-700">+ Création libre (PNJ / Créature)</button>
               </div>
             </div>
             <div id="create-form-wrapper" class="hidden border bg-amber-50 space-y-3">
               <div id="create-form-mount" class="space-y-3"></div>
             </div>
+            <div id="free-create-wrapper" class="hidden border bg-purple-50 space-y-3">
+              <div id="free-create-mount" class="space-y-3"></div>
+            </div>
+
             <div id="manage-sheet-container" class="space-y-4"></div>
           </div>
         </section>

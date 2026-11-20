@@ -2374,5 +2374,263 @@ resBox.classList.add('hidden');
 }
 }
 
+let FREE_CARACS = { Force: 10, Agilité: 10, Santé: 10, Connaissance: 10, Perception: 10, Présence: 10 };
+let FREE_PORTRAIT = '';
+let FREE_TALENTS = new Array();
+let FREE_CHOICES = {};
+
+function toggleFreeCreateForm() {
+  const wrap = document.getElementById('free-create-wrapper');
+  const normWrap = document.getElementById('create-form-wrapper');
+  const manageSheet = document.getElementById('manage-sheet-container');
+  const sheetSelect = document.getElementById('sheet-char-select');
+  const isOpening = wrap.classList.contains('hidden');
+  if (isOpening) {
+    if (normWrap) normWrap.classList.add('hidden');
+    FREE_CARACS = { Force: 10, Agilité: 10, Santé: 10, Connaissance: 10, Perception: 10, Présence: 10 };
+    FREE_PORTRAIT = '';
+    FREE_TALENTS = new Array();
+    FREE_CHOICES = {};
+    renderFreeCreationForm();
+    wrap.classList.remove('hidden');
+    if (manageSheet) manageSheet.classList.add('hidden');
+    if (sheetSelect) sheetSelect.disabled = true;
+  } else {
+    cancelFreeCreation();
+  }
+}
+
+function cancelFreeCreation() {
+  document.getElementById('free-create-wrapper').classList.add('hidden');
+  const manageSheet = document.getElementById('manage-sheet-container');
+  const sheetSelect = document.getElementById('sheet-char-select');
+  if (manageSheet) manageSheet.classList.remove('hidden');
+  if (sheetSelect) sheetSelect.disabled = false;
+}
+
+function handleFreePortraitUpload(input) {
+  const file = input.files.item(0);
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    const img = new Image();
+    img.onload = function() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 128; canvas.height = 128;
+      canvas.getContext('2d').drawImage(img, 0, 0, 128, 128);
+      FREE_PORTRAIT = canvas.toDataURL('image/jpeg', 0.75);
+      const prev = document.getElementById('fc-portrait-preview');
+      if (prev) prev.src = FREE_PORTRAIT;
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function renderFreeCreationForm() {
+  const mount = document.getElementById('free-create-mount');
+  if (!mount || !RULES) return;
+  const prevName = document.getElementById('fc-name') ? document.getElementById('fc-name').value : '';
+  const prevType = document.getElementById('fc-type') ? document.getElementById('fc-type').value : 'PNJ / Créature';
+  const prevPub = document.getElementById('fc-public') ? document.getElementById('fc-public').checked : true;
+  const prevFilter = document.getElementById('fc-tal-filter') ? document.getElementById('fc-tal-filter').value : '';
+
+  mount.innerHTML = '';
+  mount.appendChild(el('h3', '', 'Création libre (PNJ, Animal, Créature)'));
+
+  const row1 = el('div', 'grid grid-cols-3');
+  const colName = el('div', '');
+  colName.appendChild(el('div', '', 'Nom *'));
+  const inpName = el('input', ''); inpName.id = 'fc-name'; inpName.type = 'text'; inpName.value = prevName; inpName.style.width = '90%';
+  colName.appendChild(inpName);
+  row1.appendChild(colName);
+
+  const colType = el('div', '');
+  colType.appendChild(el('div', '', 'Nature / Espèce (libre)'));
+  const inpType = el('input', ''); inpType.id = 'fc-type'; inpType.type = 'text'; inpType.value = prevType; inpType.style.width = '90%';
+  colType.appendChild(inpType);
+  row1.appendChild(colType);
+
+  const colPort = el('div', 'flex');
+  const prevImg = el('img', 'portrait-img'); prevImg.id = 'fc-portrait-preview';
+  prevImg.src = FREE_PORTRAIT || 'data:image/svg+xml;utf8,<svg xmlns="http://w3.org" width="64" height="64"><rect width="64" height="64" fill="%23d6d3d1"/></svg>';
+  const inpFile = el('input', ''); inpFile.type = 'file'; inpFile.accept = 'image/*'; inpFile.style.fontSize = '11px';
+  inpFile.onchange = function() { handleFreePortraitUpload(inpFile); };
+  colPort.appendChild(prevImg); colPort.appendChild(inpFile);
+  row1.appendChild(colPort);
+  mount.appendChild(row1);
+
+  const lblPub = el('label', 'flex');
+  const chkPub = el('input', ''); chkPub.id = 'fc-public'; chkPub.type = 'checkbox'; chkPub.checked = prevPub;
+  lblPub.appendChild(chkPub); lblPub.appendChild(document.createTextNode(' Visible par tous les joueurs'));
+  mount.appendChild(lblPub);
+
+  mount.appendChild(el('strong', '', '1. Caractéristiques libres (de 0 à 20)'));
+  const gridCarac = el('div', 'grid grid-cols-6');
+  RULES.caracteristiques.forEach(function(c) {
+    const box = el('div', 'border bg-stone-50');
+    box.style.textAlign = 'center'; box.style.padding = '6px 4px';
+    box.appendChild(el('div', '', c));
+    const ctrl = el('div', 'flex');
+    ctrl.style.justifyContent = 'center'; ctrl.style.flexWrap = 'nowrap'; ctrl.style.gap = '4px'; ctrl.style.marginTop = '4px';
+    const bMinus = el('button', '', '-'); bMinus.style.padding = '2px 7px';
+    bMinus.onclick = function() { if (FREE_CARACS[c] > 0) { FREE_CARACS[c] -= 1; revalidateFreeTalents(); renderFreeCreationForm(); } };
+    const valSpan = el('strong', '', String(FREE_CARACS[c]));
+    valSpan.style.display = 'inline-block'; valSpan.style.minWidth = '20px';
+    const bPlus = el('button', '', '+'); bPlus.style.padding = '2px 7px';
+    bPlus.onclick = function() { if (FREE_CARACS[c] < 20) { FREE_CARACS[c] += 1; renderFreeCreationForm(); } };
+    ctrl.appendChild(bMinus); ctrl.appendChild(valSpan); ctrl.appendChild(bPlus);
+    box.appendChild(ctrl);
+    gridCarac.appendChild(box);
+  });
+  mount.appendChild(gridCarac);
+
+  mount.appendChild(el('strong', '', '2. Talents (filtrés automatiquement selon les prérequis)'));
+  const addRow = el('div', 'flex');
+  const inpFilter = el('input', ''); inpFilter.id = 'fc-tal-filter'; inpFilter.type = 'text'; inpFilter.placeholder = 'Filtrer un talent...'; inpFilter.value = prevFilter;
+  const selTal = el('select', ''); selTal.id = 'fc-tal-sel'; selTal.style.maxWidth = '420px';
+  const selSub = el('select', ''); selSub.id = 'fc-tal-sub'; selSub.classList.add('hidden'); selSub.style.background = '#fef3c7';
+
+  const updateSubOptions = function() {
+    const tName = selTal.value;
+    const chList = getChoicesForTalent(tName, FREE_CHOICES);
+    selSub.innerHTML = '';
+    if (chList) {
+      const used = FREE_CHOICES[tName] || new Array();
+      const avail = chList.filter(function(ch) { return !used.includes(ch); });
+      avail.forEach(function(ch) { const o = el('option', '', ch); o.value = ch; selSub.appendChild(o); });
+      selSub.classList.remove('hidden');
+    } else {
+      selSub.classList.add('hidden');
+    }
+  };
+
+  const fillFreeTalOptions = function() {
+    const q = inpFilter.value.toLowerCase().trim();
+    selTal.innerHTML = '';
+    RULES.talents.forEach(function(t) {
+      if (isTalentEligible(t.nom, FREE_CARACS, FREE_TALENTS, 30, FREE_CHOICES)) {
+        if (!q || t.nom.toLowerCase().includes(q) || (t.effet && t.effet.toLowerCase().includes(q))) {
+          const o = el('option', '', t.nom + (t.type === 'epique' ? ' [Épique]' : '') + ' — ' + t.effet);
+          o.value = t.nom;
+          selTal.appendChild(o);
+        }
+      }
+    });
+    updateSubOptions();
+  };
+
+  fillFreeTalOptions();
+  inpFilter.oninput = fillFreeTalOptions;
+  selTal.onchange = updateSubOptions;
+
+  const bAddTal = el('button', 'bg-purple-700', '+ Ajouter talent');
+  bAddTal.onclick = function() {
+    const tName = selTal.value;
+    if (!tName) return;
+    FREE_TALENTS.push(tName);
+    if (!selSub.classList.contains('hidden') && selSub.value) {
+      if (!FREE_CHOICES[tName]) FREE_CHOICES[tName] = new Array();
+      FREE_CHOICES[tName].push(selSub.value);
+    }
+    renderFreeCreationForm();
+  };
+  addRow.appendChild(inpFilter); addRow.appendChild(selTal); addRow.appendChild(selSub); addRow.appendChild(bAddTal);
+  mount.appendChild(addRow);
+
+  const acqWrap = el('div', 'flex');
+  FREE_TALENTS.forEach(function(tName, idx) {
+    const badge = el('span', 'border bg-stone-50', tName + ' ');
+    badge.style.fontSize = '12px';
+    const bDel = el('button', '', 'x'); bDel.style.color = '#dc2626'; bDel.style.padding = '1px 5px';
+    bDel.onclick = function() {
+      const removed = FREE_TALENTS.splice(idx, 1).at(0);
+      if (FREE_CHOICES[removed]) FREE_CHOICES[removed].pop();
+      revalidateFreeTalents();
+      renderFreeCreationForm();
+    };
+    badge.appendChild(bDel);
+    acqWrap.appendChild(badge);
+  });
+  if (Object.keys(FREE_CHOICES).length > 0) {
+    const infoCh = el('div', '', 'Spécialisations actives' + formatChoicesMap(FREE_CHOICES));
+    infoCh.style.fontSize = '11px'; infoCh.style.color = '#57534e';
+    mount.appendChild(infoCh);
+  }
+  mount.appendChild(acqWrap);
+
+  const btnRow = el('div', 'flex');
+  const btnSave = el('button', 'bg-purple-700', 'Enregistrer la créature / le PNJ');
+  btnSave.style.flex = '2';
+  btnSave.onclick = saveFreeCharacter;
+  const btnCancel = el('button', '', 'Annuler');
+  btnCancel.style.flex = '1';
+  btnCancel.onclick = cancelFreeCreation;
+  btnRow.appendChild(btnSave); btnRow.appendChild(btnCancel);
+  mount.appendChild(btnRow);
+}
+
+function revalidateFreeTalents() {
+  let kept = new Array();
+  let keptChoices = {};
+  let changed = true;
+  while (changed) {
+    changed = false;
+    FREE_TALENTS.forEach(function(tName, idx) {
+      if (kept.includes(idx)) return;
+      const acqNames = kept.map(function(i) { return FREE_TALENTS.at(i); });
+      if (isTalentEligible(tName, FREE_CARACS, acqNames, 30, keptChoices)) {
+        kept.push(idx);
+        if (FREE_CHOICES[tName] && FREE_CHOICES[tName].length > 0) {
+          const usedCount = (keptChoices[tName] || new Array()).length;
+          if (FREE_CHOICES[tName].at(usedCount)) {
+            if (!keptChoices[tName]) keptChoices[tName] = new Array();
+            keptChoices[tName].push(FREE_CHOICES[tName].at(usedCount));
+          }
+        }
+        changed = true;
+      }
+    });
+  }
+  FREE_TALENTS = kept.map(function(i) { return FREE_TALENTS.at(i); });
+  FREE_CHOICES = keptChoices;
+}
+
+async function saveFreeCharacter() {
+  const name = document.getElementById('fc-name').value.trim();
+if (!name) return alert("Veuillez saisir un nom.");
+const nature = document.getElementById('fc-type').value.trim() || 'PNJ / Créature';
+const charData = {
+portrait: FREE_PORTRAIT,
+desir: 'Libre',
+peuple: nature,
+peuple_carac: '',
+culture: 'Création libre',
+culture_carac: '',
+classe: 'PNJ / Créature',
+base_caracs: Object.assign({}, FREE_CARACS),
+talents_lvl1: FREE_TALENTS.slice(),
+talent_choices_lvl1: Object.assign({}, FREE_CHOICES),
+sorts: new Array(),
+level_caracs: {},
+level_talents: {},
+level_talent_choices: {},
+inventaire: new Array({ nom: "Poings", categorie: "Arme", famille: "Lutte", mains: 1, poids: 0, force_min: 5, degat: 0, portee: 0 }),
+worn: { MainPrincipale: 0 },
+blessures: {},
+fatigue: 0,
+emotion: "Aucune"
+};
+const res = await sb.from('characters').insert({
+owner_id: CURRENT_USER.id, owner_email: CURRENT_USER.email, name: name,
+is_public: document.getElementById('fc-public').checked, level: 1, effective_level: 1, data: charData
+});
+if (res.error) return alert("Erreur : " + res.error.message);
+cancelFreeCreation();
+alert(name + " créé avec succès !");
+await refreshAllData(true);
+switchTab('play');
+}
+
 
 init();

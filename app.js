@@ -2759,21 +2759,23 @@ function renderDestiny() {
     marker.style.position = 'absolute';
     marker.style.left = pct.toFixed(1) + '%';
     marker.style.top = '4px';
-    marker.style.transform = 'translateX(-50%)';
+    marker.style.transform = 'translateX(-' + pct.toFixed(1) + '%)';
+    marker.style.flexWrap = 'nowrap';
     marker.style.background = '#fffbeb';
     marker.style.border = '2px solid #92400e';
     marker.style.borderRadius = '999px';
-    marker.style.padding = '2px 8px 2px 3px';
+    marker.style.padding = '2px 10px 2px 3px';
     marker.style.whiteSpace = 'nowrap';
     marker.style.boxShadow = '0 1px 4px rgba(0,0,0,0.15)';
     marker.style.zIndex = '2';
 
     const avatar = el('img', '');
     avatar.src = char.data.portrait || 'data:image/svg+xml;utf8,<svg xmlns="http://w3.org" width="24" height="24"><rect width="24" height="24" fill="%23d6d3d1"/></svg>';
-    avatar.style.width = '24px'; avatar.style.height = '24px'; avatar.style.borderRadius = '50%'; avatar.style.objectFit = 'cover';
+    avatar.style.width = '24px'; avatar.style.height = '24px'; avatar.style.borderRadius = '50%'; avatar.style.objectFit = 'cover'; avatar.style.flexShrink = '0';
 
-    const label = el('span', '', char.name + ' : ' + avg.toFixed(2) + ' (' + values.length + ' jets)');
+    const label = el('span', '', char.name + ' : ' + avg.toFixed(2) + ' (' + values.length + (values.length > 1 ? ' jets)' : ' jet)'));
     label.style.fontSize = '12px'; label.style.fontWeight = 'bold';
+
 
     marker.appendChild(avatar);
     marker.appendChild(label);

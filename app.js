@@ -2279,6 +2279,13 @@ function computeCombatStats(char, p) {
   const isRanged = new Array('Arcs', 'Arbalètes', 'Frondes', 'Armes de jet').includes(mainWeapon.famille);
   const cov = getCoverTotals();
 
+  const allies = (COMBAT && COMBAT.participants ? COMBAT.participants : new Array()).filter(function(other) {
+    return other.camp === p.camp && other.char_id !== p.char_id;
+  });
+  const alliesSamePosture = allies.filter(function(other) { return other.posture === p.posture; });
+  const alliesAggressive = allies.filter(function(other) { return other.posture === 'Agressif'; });
+  const alliesDefensive = allies.filter(function(other) { return other.posture === 'Défensif'; });
+
   let attCarac = (st.caracs['Force'] || 10) - 10;
   if (st.talents.includes('Finesse') && st.caracs['Force'] >= (mainWeapon.force_min || 5) + 1) {
     attCarac = Math.max(attCarac, (st.caracs['Agilité'] || 10) - 10);
@@ -2297,6 +2304,13 @@ function computeCombatStats(char, p) {
   if (st.talents.includes('Acuité') && isRanged) att += 1;
   if (st.talents.includes('Rage') && p.posture === 'Agressif' && !isRanged) att += 2;
 
+  if (st.talents.includes('Coordination tactique')) {
+    att += Math.min(2, Math.floor(alliesSamePosture.length / 2));
+  }
+  if (st.talents.includes('Gloire') && alliesAggressive.length >= 2) {
+    att += 1;
+  }
+
   if (posObj.couv_att === 'malus') att += cov.malus;
   if (posObj.couv_att === 'bonus') att += cov.bonus * (st.talents.includes('Opportunisme') ? 2 : 1);
   att = Math.max(0, att);
@@ -2306,7 +2320,28 @@ function computeCombatStats(char, p) {
   if (secItem && secItem.categorie === 'Bouclier') def += (secItem.def || 0);
   if (st.talents.includes('Esquive')) def += 1;
   if (st.talents.includes('Parade') && !isRanged && mainWeapon.nom !== 'Poings') def += 1;
-  if (st.talents.includes('Rempart') && p.posture === 'Défensif') def += 1;
+
+  if (st.talents.includes('Rempart') && p.posture === 'Défensif' && !isRanged) {
+    const hasShieldOrHast = (secItem && secItem.categorie === 'Bouclier') || mainWeapon.famille === "Arme d'hast";
+    const allyHasRempartFormation = hasShieldOrHast && alliesDefensive.some(function(other) {
+      const oChar = CHARACTERS.find(function(c) { return c.id === other.char_id; });
+      if (!oChar) return false;
+      const oSt = getEffectiveState(oChar);
+      if (!oSt.talents.includes('Rempart')) return false;
+      const oMain = oSt.equipped['MainPrincipale'] || oSt.inv.at(oSt.worn['MainPrincipale']) || defaultFists;
+      const oSec = oSt.equipped['MainSecondaire'] || oSt.inv.at(oSt.worn['MainSecondaire']) || null;
+      return (oSec && oSec.categorie === 'Bouclier') || oMain.famille === "Arme d'hast";
+    });
+    def += allyHasRempartFormation ? 2 : 1;
+  }
+
+  if (st.talents.includes('Entraînement tactique')) {
+    def += Math.min(2, Math.floor(alliesSamePosture.length / 2));
+  }
+  if (st.talents.includes('Gloire') && alliesDefensive.length >= 2) {
+    def += 1;
+  }
+
   if (st.talents.includes('Volée') && p.posture === 'Défensif' && new Array('Arcs', 'Arbalètes', 'Frondes').includes(mainWeapon.famille)) def += 1;
   if (st.talents.includes('Tirailleur') && p.posture === 'Repli' && isRanged) def += 1;
   if (st.talents.includes('Acuité') && isRanged) def += 1;
@@ -2318,6 +2353,7 @@ function computeCombatStats(char, p) {
 
   return { att: att, def: def };
 }
+
 
 async function rollCombatCamp(camp) {
   const parts = COMBAT.participants || new Array();

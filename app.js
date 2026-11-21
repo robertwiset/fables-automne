@@ -658,13 +658,11 @@ function makeRituelChk(labelText, stateKey, disabled) {
   return lbl;
 }
 
-function renderMagicBlock(char, st, mount) {
+function renderMagicBlock(char, st, mount, isOwner) {
   const r = ensureRituelState();
   const ritBox = el('div', 'bg-purple-50 border space-y-2');
   ritBox.appendChild(el('strong', '', 'Rituels & Préparations magiques :'));
 
-  pBtn.disabled = !isOwner;
-  bCast.disabled = !isOwner;
   
   const addRituelCard = function(title, mainKey, buildSubFn) {
     const card = el('div', 'border space-y-2');
@@ -824,7 +822,8 @@ function renderMagicBlock(char, st, mount) {
   const pSign = pow.total >= 0 ? '+' : '';
   const pBtn = el('button', 'bg-purple-700', 'Test de Pouvoir brut (1d20 ' + pSign + pow.total + ')');
   pBtn.style.width = '100%';
-  pBtn.onclick = function() { rollMagicTest(char, 'Pouvoir brut', pow); };
+  pBtn.disabled = !isOwner;
+  if (isOwner) pBtn.onclick = function() { rollMagicTest(char, 'Pouvoir brut', pow); };
   mount.appendChild(pBtn);
 
   const knownSpells = st.sorts || new Array();
@@ -837,13 +836,15 @@ function renderMagicBlock(char, st, mount) {
     knownSpells.forEach(function(sp) {
       const bCast = el('button', 'border bg-stone-50', sp.nom + ' (' + sp.voie + ') — 1d20 ' + pSign + pow.total);
       bCast.style.textAlign = 'left';
-      bCast.onclick = function() { rollMagicTest(char, sp.nom + ' (' + sp.voie + ')', pow); };
+      bCast.disabled = !isOwner;
+      if (isOwner) bCast.onclick = function() { rollMagicTest(char, sp.nom + ' (' + sp.voie + ')', pow); };
       spGrid.appendChild(bCast);
     });
     spBox.appendChild(spGrid);
   }
   mount.appendChild(spBox);
 }
+
 
 
 

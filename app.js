@@ -2041,16 +2041,26 @@ async function setWoundLevel(charId, loc, gravite) {
 }
 
 async function rollRandomWound(charId, type) {
-  const locs = ['Tête', 'Torse', 'Ventre/Bassin', 'Bras droit', 'Bras gauche', 'Jambe(s)'];
+  const char = CHARACTERS.find(function(c) { return c.id === charId; });
+  if (!char) return;
+  const locs = new Array('Tête', 'Torse', 'Ventre/Bassin', 'Bras droit', 'Bras gauche', 'Jambe(s)');
   const loc = locs.at(Math.floor(Math.random() * 6));
   const d1 = Math.floor(Math.random() * 6) + 1;
   const d2 = Math.floor(Math.random() * 6) + 1;
   let grav = d1;
   if (type === 'legere') grav = Math.min(d1, d2);
   if (type === 'grave') grav = Math.max(d1, d2);
+
+  const existing = (char.data.blessures || {})[loc];
+  if (existing && existing.gravite >= grav) {
+    alert("Blessure " + type + " localisée : " + loc + " (Gravité " + grav + ") — Aucun changement (blessure existante de gravité " + existing.gravite + " conservée).");
+    return;
+  }
+
   await setWoundLevel(charId, loc, grav);
   alert("Blessure " + type + " localisée : " + loc + " (Gravité " + grav + ")");
 }
+
 
 async function rollFeverTest(charId) {
   const char = CHARACTERS.find(function(c) { return c.id === charId; });

@@ -427,11 +427,14 @@ function syncCharacterDropdowns() {
 
   const combatSel = document.getElementById('combat-add-char');
   combatSel.innerHTML = '';
-  myChars.forEach(function(c) {
-    const opt = el('option', '', c.name);
+  visibleChars.forEach(function(c) {
+    const isMine = c.owner_id === CURRENT_USER.id;
+    const tag = isMine ? (c.is_public ? '' : ' [Masqué]') : (' — ' + (c.owner_email || 'Joueur'));
+    const opt = el('option', '', c.name + tag);
     opt.value = c.id;
     combatSel.appendChild(opt);
   });
+
 }
 
 

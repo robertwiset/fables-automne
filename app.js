@@ -1248,6 +1248,10 @@ function getChoicesForTalent(tName, acquiredChoicesMap) {
   if (tName === 'Maîtrise magique') {
     return (chMap['Apprentissage magique'] || new Array()).slice();
   }
+  if (tName === 'Maîtrise artisanale') {
+    return (chMap['Artisanat'] || new Array()).slice();
+  }
+
   if (t.choix && t.choix.length > 0) return t.choix;
   if (tName === 'Affinité magique') return (RULES.voies_magiques || new Array()).map(function(v) { return v.voie; });
   if (tName === 'Spécialisation magique' || tName === 'Entraînement magique') {

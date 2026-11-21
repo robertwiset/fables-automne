@@ -388,27 +388,42 @@ async function updateScene() {
   }).eq('id', 1);
 }
 
+let PLAY_SHOW_ALL = false;
+
+function togglePlayScope() {
+  PLAY_SHOW_ALL = !PLAY_SHOW_ALL;
+  const btn = document.getElementById('btn-toggle-play-scope');
+  if (btn) btn.textContent = PLAY_SHOW_ALL ? 'Tous les personnages visibles' : 'Mes personnages';
+  syncCharacterDropdowns();
+  renderPlaySheet();
+}
+
 function syncCharacterDropdowns() {
   const myChars = CHARACTERS.filter(function(c) { return c.owner_id === CURRENT_USER.id; });
+  const visibleChars = CHARACTERS.filter(function(c) { return c.owner_id === CURRENT_USER.id || c.is_public; });
+  const playPool = PLAY_SHOW_ALL ? visibleChars : myChars;
+
   const activeSel = document.getElementById('active-char-select');
   const prevActive = activeSel.value;
   activeSel.innerHTML = '';
-  myChars.forEach(function(c) {
-    const opt = el('option', '', c.name + ' (Niv.' + c.effective_level + ') ' + (c.is_public ? '' : '[Masqué]'));
+  playPool.forEach(function(c) {
+    const isMine = c.owner_id === CURRENT_USER.id;
+    const ownerTag = isMine ? (c.is_public ? '' : ' [Masqué]') : (' — ' + (c.owner_email || 'Joueur'));
+    const opt = el('option', '', c.name + ' (Niv.' + c.effective_level + ')' + ownerTag);
     opt.value = c.id;
     activeSel.appendChild(opt);
   });
-  if (myChars.some(function(c) { return c.id === prevActive; })) activeSel.value = prevActive;
+  if (playPool.some(function(c) { return c.id === prevActive; })) activeSel.value = prevActive;
 
   const sheetSel = document.getElementById('sheet-char-select');
   const prevSheet = sheetSel.value;
   sheetSel.innerHTML = '';
-  CHARACTERS.forEach(function(c) {
-    const opt = el('option', '', c.name + ' (Niv.' + c.effective_level + ') — ' + (c.owner_id === CURRENT_USER.id ? 'Moi' : (c.owner_email || 'Joueur')));
+  myChars.forEach(function(c) {
+    const opt = el('option', '', c.name + ' (Niv.' + c.effective_level + ')' + (c.is_public ? '' : ' [Masqué]'));
     opt.value = c.id;
     sheetSel.appendChild(opt);
   });
-  if (CHARACTERS.some(function(c) { return c.id === prevSheet; })) sheetSel.value = prevSheet;
+  if (myChars.some(function(c) { return c.id === prevSheet; })) sheetSel.value = prevSheet;
 
   const combatSel = document.getElementById('combat-add-char');
   combatSel.innerHTML = '';
@@ -418,6 +433,7 @@ function syncCharacterDropdowns() {
     combatSel.appendChild(opt);
   });
 }
+
 
 function onSelectPlayChar() {
   ACTIVE_RITUELS = getDefaultRituelState();
@@ -455,6 +471,8 @@ function renderPlaySheet() {
   
   statusDiv.textContent = 'Fatigue : ' + st.fatigue + '/' + st.caracs['Santé'] + ' | Émotion : ' + (char.data.emotion || 'Aucune') + ' | Blessure max : -' + st.maxWoundMalus + ' | Armure Agi : -' + st.armorMalusAgi + (st.encumbered ? ' | ENCOMBRÉ !' : '');
 
+  const isOwner = char.owner_id === CURRENT_USER.id;
+
   RULES.caracteristiques.forEach(function(cName) {
     const val = st.caracs[cName] || 10;
     const mod = val - 10;
@@ -462,7 +480,8 @@ function renderPlaySheet() {
     const col = el('div', 'border bg-stone-50 space-y-2');
     const cBtn = el('button', 'bg-amber-800', cName + ' : ' + val + ' (' + sign + mod + ')');
     cBtn.style.width = '100%';
-    cBtn.onclick = function() { rollTest(cName, true); };
+    cBtn.disabled = !isOwner;
+    if (isOwner) cBtn.onclick = function() { rollTest(cName, true); };
     col.appendChild(cBtn);
 
     const listWrap = el('div', 'space-y-2');
@@ -473,19 +492,21 @@ function renderPlaySheet() {
       sBtn.style.width = '100%';
       sBtn.style.background = '#fff';
       sBtn.style.fontSize = '12px';
+      sBtn.disabled = !isOwner;
       sBtn.appendChild(el('span', '', comp.nom));
       sBtn.appendChild(el('strong', '', sSign + sMod));
-      sBtn.onclick = function() { rollTest(comp.nom, false); };
+      if (isOwner) sBtn.onclick = function() { rollTest(comp.nom, false); };
       listWrap.appendChild(sBtn);
     });
     col.appendChild(listWrap);
     colsDiv.appendChild(col);
   });
 
-  renderHealthBlock(char, st, healthMount, true);
-  renderMagicBlock(char, st, magicMount);
+  renderHealthBlock(char, st, healthMount, isOwner);
+  renderMagicBlock(char, st, magicMount, isOwner);
   window.scrollTo(0, savedScrollY);
 }
+
 
 function getDefaultRituelState() {
   return {
@@ -642,6 +663,9 @@ function renderMagicBlock(char, st, mount) {
   const ritBox = el('div', 'bg-purple-50 border space-y-2');
   ritBox.appendChild(el('strong', '', 'Rituels & Préparations magiques :'));
 
+  pBtn.disabled = !isOwner;
+  bCast.disabled = !isOwner;
+  
   const addRituelCard = function(title, mainKey, buildSubFn) {
     const card = el('div', 'border space-y-2');
     card.style.background = '#fff';

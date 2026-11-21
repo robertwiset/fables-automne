@@ -511,13 +511,22 @@ function computeMagicPower(char, st) {
   let extraTimeDice = 0;
   let stealthMalus = 0;
 
-  const modCon = (st.caracs['Connaissance'] || 10) - 10;
-  const modPre = (st.caracs['Présence'] || 10) - 10;
-  const usePre = modPre > modCon;
-  let base = usePre ? modPre : modCon;
-  if (!usePre && st.talents.includes('Esotérisme')) { base *= 2; parts.push('Connaissance x2 (Ésotérisme) ' + base); }
-  else if (usePre && st.talents.includes('Mysticisme')) { base *= 2; parts.push('Présence x2 (Mysticisme) ' + base); }
-  else { parts.push((usePre ? 'Présence ' : 'Connaissance ') + (base >= 0 ? '+' : '') + base); }
+    let bonusCon = Math.max(0, (st.caracs['Connaissance'] || 10) - 10);
+  let bonusPre = Math.max(0, (st.caracs['Présence'] || 10) - 10);
+  if (st.talents.includes('Esotérisme') && bonusCon > 0) {
+    bonusCon *= 2;
+    parts.push('Connaissance x2 (Ésotérisme) +' + bonusCon);
+  } else if (bonusCon > 0) {
+    parts.push('Connaissance +' + bonusCon);
+  }
+  if (st.talents.includes('Mysticisme') && bonusPre > 0) {
+    bonusPre *= 2;
+    parts.push('Présence x2 (Mysticisme) +' + bonusPre);
+  } else if (bonusPre > 0) {
+    parts.push('Présence +' + bonusPre);
+  }
+  let base = bonusCon + bonusPre;
+  if (base === 0) parts.push('Base +0');
 
   let total = base;
   if (st.talents.includes('Grand art')) { total += 1; parts.push('Grand art +1'); }

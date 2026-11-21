@@ -529,13 +529,13 @@ function ensureRituelState() {
   return ACTIVE_RITUELS;
 }
 
-function computeMagicPower(char, st) {
+function computeMagicPower(char, st, spellObj) {
   const r = ensureRituelState();
   let parts = new Array();
   let extraTimeDice = 0;
   let stealthMalus = 0;
 
-    let bonusCon = Math.max(0, (st.caracs['Connaissance'] || 10) - 10);
+  let bonusCon = Math.max(0, (st.caracs['Connaissance'] || 10) - 10);
   let bonusPre = Math.max(0, (st.caracs['Présence'] || 10) - 10);
   if (st.talents.includes('Esotérisme') && bonusCon > 0) {
     bonusCon *= 2;
@@ -555,11 +555,29 @@ function computeMagicPower(char, st) {
   let total = base;
   if (st.talents.includes('Grand art')) { total += 1; parts.push('Grand art +1'); }
 
+  let noSpellFatigue = false;
+  if (spellObj) {
+    const affVoies = (st.talentChoices && st.talentChoices['Affinité magique']) ? st.talentChoices['Affinité magique'] : new Array();
+    if (st.talents.includes('Affinité magique') && affVoies.includes(spellObj.voie)) {
+      total += 2;
+      parts.push('Affinité magique (' + spellObj.voie + ') +2');
+    }
+    const specSorts = (st.talentChoices && st.talentChoices['Spécialisation magique']) ? st.talentChoices['Spécialisation magique'] : new Array();
+    if (st.talents.includes('Spécialisation magique') && specSorts.includes(spellObj.nom)) {
+      total += 3;
+      parts.push('Spécialisation magique (' + spellObj.nom + ') +3');
+    }
+    const entSorts = (st.talentChoices && st.talentChoices['Entraînement magique']) ? st.talentChoices['Entraînement magique'] : new Array();
+    if (st.talents.includes('Entraînement magique') && entSorts.includes(spellObj.nom)) {
+      noSpellFatigue = true;
+      parts.push('Entraînement magique (sans fatigue 10m)');
+    }
+  }
+
   const overtRituelActive = r.formule || r.gestuelle || r.inscription || r.ingredient;
   if (st.talents.includes('Subtilité') && !overtRituelActive) {
     total += 4; parts.push('Subtilité +4');
   }
-
 
   if (r.formule) {
     total += 1; parts.push('Formule +1'); stealthMalus += 1;
@@ -643,8 +661,10 @@ function computeMagicPower(char, st) {
 
   if (st.fatigue > 0) { total -= st.fatigue; parts.push('Fatigue -' + st.fatigue); }
   if (st.emotionObj.comp !== 0) { total += st.emotionObj.comp; parts.push('Émotion ' + st.emotionObj.comp); }
-  return { total: total, parts: parts, extraTimeDice: extraTimeDice, stealthMalus: stealthMalus };
+  return { total: total, parts: parts, extraTimeDice: extraTimeDice, stealthMalus: stealthMalus, noSpellFatigue: noSpellFatigue };
 }
+
+
 
 function makeRituelChk(labelText, stateKey, disabled) {
   const r = ensureRituelState();
@@ -837,12 +857,16 @@ function renderMagicBlock(char, st, mount, isOwner) {
   } else {
     const spGrid = el('div', 'grid grid-cols-2');
     knownSpells.forEach(function(sp) {
-      const bCast = el('button', 'border bg-stone-50', sp.nom + ' (' + sp.voie + ') — 1d20 ' + pSign + pow.total);
+      const spPow = computeMagicPower(char, st, sp);
+      const spSign = spPow.total >= 0 ? '+' : '';
+      const fatTag = spPow.noSpellFatigue ? ' [Sans fatigue]' : '';
+      const bCast = el('button', 'border bg-stone-50', sp.nom + ' (' + sp.voie + ') — 1d20 ' + spSign + spPow.total + fatTag);
       bCast.style.textAlign = 'left';
       bCast.disabled = !isOwner;
-      if (isOwner) bCast.onclick = function() { rollMagicTest(char, sp.nom + ' (' + sp.voie + ')', pow); };
+      if (isOwner) bCast.onclick = function() { rollMagicTest(char, sp.nom + ' (' + sp.voie + ')', spPow); };
       spGrid.appendChild(bCast);
     });
+
     spBox.appendChild(spGrid);
   }
   mount.appendChild(spBox);
@@ -1235,10 +1259,11 @@ function onClassTalentToggle(chk) {
   updateCreationTalents();
 }
 
-function getChoicesForTalent(tName, acquiredChoicesMap) {
+function getChoicesForTalent(tName, acquiredChoicesMap, knownSortsList) {
   const t = RULES.talents.find(function(x) { return x.nom === tName; });
   if (!t) return null;
   const chMap = acquiredChoicesMap || {};
+  const sortsArr = knownSortsList || new Array();
   if (tName === 'Initiation magique') {
     return (RULES.voies_magiques || new Array()).map(function(v) { return v.voie; });
   }
@@ -1251,18 +1276,23 @@ function getChoicesForTalent(tName, acquiredChoicesMap) {
   if (tName === 'Maîtrise artisanale') {
     return (chMap['Artisanat'] || new Array()).slice();
   }
-
-  if (t.choix && t.choix.length > 0) return t.choix;
-  if (tName === 'Affinité magique') return (RULES.voies_magiques || new Array()).map(function(v) { return v.voie; });
-  if (tName === 'Spécialisation magique' || tName === 'Entraînement magique') {
-    let allSorts = new Array();
-    (RULES.voies_magiques || new Array()).forEach(function(v) { allSorts = allSorts.concat(v.sorts); });
-    return allSorts;
+  if (tName === 'Affinité magique') {
+    const initV = chMap['Initiation magique'] || new Array();
+    const sortV = sortsArr.map(function(s) { return s.voie; });
+    const merged = new Array();
+    initV.concat(sortV).forEach(function(v) { if (v && !merged.includes(v)) merged.push(v); });
+    return merged;
   }
+  if (tName === 'Spécialisation magique' || tName === 'Entraînement magique') {
+    const names = new Array();
+    sortsArr.forEach(function(s) { if (s && s.nom && !names.includes(s.nom)) names.push(s.nom); });
+    return names;
+  }
+  if (t.choix && t.choix.length > 0) return t.choix;
   return null;
 }
 
-function isTalentEligible(talentName, caracs, acquiredTalents, targetLevel, acquiredChoicesMap) {
+function isTalentEligible(talentName, caracs, acquiredTalents, targetLevel, acquiredChoicesMap, knownSortsList) {
   const lvl = targetLevel || 1;
   const t = RULES.talents.find(function(x) { return x.nom === talentName; });
   if (!t) return false;
@@ -1270,12 +1300,12 @@ function isTalentEligible(talentName, caracs, acquiredTalents, targetLevel, acqu
 
   const count = acquiredTalents.filter(function(x) { return x === talentName; }).length;
   const chMap = acquiredChoicesMap || {};
-  const choicesList = getChoicesForTalent(talentName, chMap);
+  const choicesList = getChoicesForTalent(talentName, chMap, knownSortsList);
   const allowMulti = Boolean(t.cumulable || choicesList);
   if (!allowMulti && count >= 1) return false;
   if (t.max_prises && count >= t.max_prises) return false;
 
-  if (choicesList) {
+  if (choicesList !== null) {
     const usedForThis = chMap[talentName] || new Array();
     const availForThis = choicesList.filter(function(ch) { return !usedForThis.includes(ch); });
     if (availForThis.length === 0) return false;
@@ -1291,6 +1321,8 @@ function isTalentEligible(talentName, caracs, acquiredTalents, targetLevel, acqu
   }
   return true;
 }
+
+
 
 
 let CREATE_SUBCHOICES = { peuple: '', culture: '', classe: {} };

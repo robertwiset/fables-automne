@@ -2372,9 +2372,15 @@ function computeCombatStats(char, p) {
     att += 1;
   }
 
-  if (posObj.couv_att === 'malus') att += cov.malus;
+  let effectiveCovMalus = cov.malus;
+  if (st.talents.includes('Nyctalopie') && SCENE.cover_light === 'Obscurité relative') {
+    effectiveCovMalus += 1;
+  }
+
+  if (posObj.couv_att === 'malus') att += effectiveCovMalus;
   if (posObj.couv_att === 'bonus') att += cov.bonus * (st.talents.includes('Opportunisme') ? 2 : 1);
   att = Math.max(0, att);
+
 
   let def = ((st.caracs['Agilité'] || 10) - 10) + st.armorDef + posObj.def + adjMan.def + st.emotionObj.def - st.fatigue - st.maxWoundMalus + (parseInt(p.temp_def) || 0);
   if (!posObj.sans_portee) def += (mainWeapon.portee || 0);
@@ -2408,7 +2414,7 @@ function computeCombatStats(char, p) {
   if (st.talents.includes('Acuité') && isRanged) def += 1;
   if (st.talents.includes('Ténacité') && p.posture === 'Défensif' && !isRanged) def += 2;
 
-  if (posObj.couv_def === 'malus') def += cov.malus;
+  if (posObj.couv_def === 'malus') def += effectiveCovMalus;
   if (posObj.couv_def === 'bonus') def += cov.bonus * (st.talents.includes('Opportunisme') ? 2 : 1);
   def = Math.max(0, def);
 

@@ -904,207 +904,29 @@ function renderMagicBlock(char, st, mount, isOwner) {
   const pBtn = el('button', 'bg-purple-700', 'Test de Pouvoir brut (1d20 ' + pSign + pow.total + ')');
   pBtn.style.width = '100%';
   pBtn.disabled = !isOwner;
-function renderMagicBlock(char, st, mount, isOwner) {
-  const r = ensureRituelState();
-  const ritBox = el('div', 'bg-purple-50 border space-y-2');
-  ritBox.appendChild(el('strong', '', 'Rituels & Préparations magiques :'));
-
-  const addRituelCard = function(title, mainKey, buildSubFn) {
-    const card = el('div', 'border space-y-2');
-    card.style.background = '#fff';
-    card.appendChild(makeRituelChk(title, mainKey, false));
-    if (r[mainKey] && buildSubFn) {
-      const sub = el('div', 'space-y-2');
-      sub.style.paddingLeft = '18px';
-      sub.style.borderLeft = '2px solid #d8b4fe';
-      buildSubFn(sub);
-      card.appendChild(sub);
-    }
-    ritBox.appendChild(card);
-  };
-
-  addRituelCard('Formule (+1 de base)', 'formule', function(sub) {
-    if (st.talents.includes('Incantation')) {
-      sub.appendChild(makeRituelChk('Incantation : Prendre 1d6 × 10 min supplémentaires (+1)', 'incant_time', false));
-      const hasMus = st.talents.includes('Musique');
-      const bMus = el('div', '', hasMus ? '✓ Bonus automatique Incantation : Talent Musique (+1)' : '• Incantation : Talent Musique non acquis (+0)');
-      bMus.style.fontSize = '11px'; bMus.style.color = hasMus ? '#047857' : '#78716c';
-      sub.appendChild(bMus);
-    }
-    if (st.talents.includes('Invocation')) {
-      sub.appendChild(makeRituelChk('Invocation : Connaître le nom véritable de la cible (+1)', 'invoc_name', false));
-      const hasDead = st.talents.includes('Érudition') || st.talents.includes('Erudition') || st.talents.includes('Linguistique') || st.talents.includes('Arcane');
-      const bDead = el('div', '', hasDead ? '✓ Bonus automatique Invocation : Langue morte maîtrisée (+1)' : '• Invocation : Aucune langue morte maîtrisée (+0)');
-      bDead.style.fontSize = '11px'; bDead.style.color = hasDead ? '#047857' : '#78716c';
-      sub.appendChild(bDead);
-    }
-  });
-
-  addRituelCard('Gestuelle (+1 de base)', 'gestuelle', function(sub) {
-    if (st.talents.includes('Danse sacrée')) {
-      sub.appendChild(makeRituelChk('Danse sacrée : Musique rythmée (+1)', 'danse_music', false));
-      const hasAgi = (st.caracs['Agilité'] || 8) >= 11;
-      const bAgi = el('div', '', hasAgi ? '✓ Bonus automatique Danse sacrée : Agilité ≥ 11 (+1)' : '• Danse sacrée : Agilité actuelle < 11 (+0)');
-      bAgi.style.fontSize = '11px'; bAgi.style.color = hasAgi ? '#047857' : '#78716c';
-      sub.appendChild(bAgi);
-    }
-    if (st.talents.includes('Solennité')) {
-      sub.appendChild(makeRituelChk('Solennité : Prendre 1d6 × 10 min supplémentaires (+1)', 'sol_time', false));
-      sub.appendChild(makeRituelChk('Solennité : Costume d’une valeur de 5 écus (+1)', 'sol_costume', false));
-    }
-  });
-
-  addRituelCard('Inscription (+1 de base)', 'inscription', function(sub) {
-    if (st.talents.includes('Horoscope')) {
-      sub.appendChild(makeRituelChk('Horoscope : Connaître la date de naissance (+1)', 'horo_birth', false));
-      const hasIng = st.talents.includes('Ingénierie');
-      const bIng = el('div', '', hasIng ? '✓ Bonus automatique Horoscope : Talent Ingénierie (+1)' : '• Horoscope : Talent Ingénierie non acquis (+0)');
-      bIng.style.fontSize = '11px'; bIng.style.color = hasIng ? '#047857' : '#78716c';
-      sub.appendChild(bIng);
-    }
-    if (st.talents.includes('Momentum')) {
-      sub.appendChild(makeRituelChk('Momentum : Prendre 1d6 × 10 min supplémentaires (+1)', 'mom_time', false));
-      sub.appendChild(makeRituelChk('Momentum : Astrolabe d’une valeur de 5 écus (+1)', 'mom_astro', false));
-    }
-  });
-
-  addRituelCard('Catalyseur (+1 de base)', 'catalyseur', function(sub) {
-    if (st.talents.includes('Consécration')) {
-      sub.appendChild(makeRituelChk('Consécration : Talisman gravé/préparé (double le bonus de Solennité)', 'consec_talisman', false));
-    }
-    if (st.talents.includes('Talisman')) {
-      const rowT = el('div', 'flex');
-      rowT.style.fontSize = '12px';
-      rowT.appendChild(el('span', '', 'Talisman :'));
-      const selT = el('select', '');
-      new Array({ v: 0, l: 'Aucun (0)' }, { v: 1, l: 'Métal rare (+1)' }, { v: 2, l: 'Métal rare dans talisman (+2)' }).forEach(function(opt) {
-        const o = el('option', '', opt.l); o.value = opt.v;
-        if (parseInt(r.talisman_metal) === opt.v) o.selected = true;
-        selT.appendChild(o);
-      });
-      selT.onchange = function() { r.talisman_metal = parseInt(selT.value); renderPlaySheet(); };
-      rowT.appendChild(selT);
-      sub.appendChild(rowT);
-    }
-  });
-
-  addRituelCard('Ingrédient (+1 de base)', 'ingredient', function(sub) {
-    const hasPot = st.talents.includes('Potion');
-    const hasAlc = st.talents.includes('Alchimie');
-    const hasEli = st.talents.includes('Elixir');
-    if (hasPot || hasAlc || hasEli) {
-      const rowP = el('div', 'flex');
-      rowP.style.fontSize = '12px';
-      rowP.appendChild(el('span', '', 'Préparation :'));
-      const selP = el('select', '');
-      const opts = new Array({ v: 0, l: 'Aucune (0)' });
-      if (hasPot) opts.push({ v: 2, l: 'Potion 1 ingrédient (+2)' });
-      if (hasAlc) opts.push({ v: 3, l: 'Potion 2 ingrédients (+3)' });
-      if (hasEli) opts.push({ v: 4, l: 'Potion 4 ingrédients (+4)' });
-      if (!opts.some(function(x) { return x.v === parseInt(r.potion_tier); })) r.potion_tier = 0;
-      opts.forEach(function(opt) {
-        const o = el('option', '', opt.l); o.value = opt.v;
-        if (parseInt(r.potion_tier) === opt.v) o.selected = true;
-        selP.appendChild(o);
-      });
-      selP.onchange = function() { r.potion_tier = parseInt(selP.value); renderPlaySheet(); };
-      rowP.appendChild(selP);
-      sub.appendChild(rowP);
-    }
-  });
-
-  addRituelCard('Transe (+1 si Concentration réussie)', 'transe', function(sub) {
-    sub.appendChild(makeRituelChk('Concentration réussie (+1)', 'transe_conc', false));
-    if (st.talents.includes('Ferveur')) {
-      const maxFatGain = Math.max(0, (st.caracs['Santé'] || 10) - st.fatigue);
-      if (parseInt(r.ferveur_lvl) > maxFatGain) r.ferveur_lvl = maxFatGain;
-      const rowF = el('div', 'flex');
-      rowF.style.fontSize = '12px';
-      if (!r.transe_conc) rowF.style.opacity = '0.5';
-      rowF.appendChild(el('span', '', 'Ferveur (Fatigue dépensée : ' + r.ferveur_lvl + ' / ' + maxFatGain + ' → +' + (r.ferveur_lvl * 2) + ') :'));
-      const rng = el('input', '');
-      rng.type = 'range'; rng.min = 0; rng.max = maxFatGain; rng.value = r.ferveur_lvl || 0;
-      rng.disabled = !r.transe_conc || maxFatGain === 0;
-      rng.oninput = function() { r.ferveur_lvl = parseInt(rng.value); renderPlaySheet(); };
-      rowF.appendChild(rng);
-      sub.appendChild(rowF);
-    }
-    if (st.talents.includes('Méditation')) {
-      sub.appendChild(makeRituelChk('Méditation : Prendre 1d6 × 10 min supplémentaires (+1)', 'med_time', !r.transe_conc));
-      sub.appendChild(makeRituelChk('Méditation quotidienne (+1)', 'med_daily', !r.transe_conc));
-    }
-    if (st.talents.includes('Extase')) {
-      sub.appendChild(makeRituelChk('Extase : Fumigation (+1)', 'ext_fumi', false));
-      sub.appendChild(makeRituelChk('Extase : Psychotrope hallucinogène (+1)', 'ext_psycho', false));
-    }
-    if (st.talents.includes('Sacrifice')) {
-      const rowS = el('div', 'flex');
-      rowS.style.fontSize = '12px';
-      rowS.appendChild(el('span', '', 'Sacrifice :'));
-      const selS = el('select', '');
-      new Array({ v: 0, l: 'Aucun (0)' }, { v: 1, l: 'Petit sacrifice (+1)' }, { v: 2, l: 'Grand sacrifice (+2)' }).forEach(function(opt) {
-        const o = el('option', '', opt.l); o.value = opt.v;
-        if (parseInt(r.sacrifice_lvl) === opt.v) o.selected = true;
-        selS.appendChild(o);
-      });
-      selS.onchange = function() { r.sacrifice_lvl = parseInt(selS.value); renderPlaySheet(); };
-      rowS.appendChild(selS);
-      sub.appendChild(rowS);
-    }
-  });
-
-  mount.appendChild(ritBox);
-
-  const vowsDefs = new Array(
-    {
-      talent: 'Humilité',
-      c1: 'Pas d’office à responsabilité ni de serviteur (+1)', k1: 'voeu_hum_1',
-      c2: 'Sert un maître ou une institution (+1)', k2: 'voeu_hum_2'
-    },
-    {
-      talent: 'Pacifisme',
-      c1: 'Ni arme ni armure, et toujours posture Repli au combat (+1)', k1: 'voeu_pac_1',
-      c2: 'Ne lance jamais un sort dangereux sur une cible (+1)', k2: 'voeu_pac_2'
-    },
-    {
-      talent: 'Pauvreté',
-      c1: 'Ne possède que ce qu’il transporte (+1)', k1: 'voeu_pau_1',
-      c2: 'Ne transporte pas plus d’un écu de biens hors objets de culte (+1)', k2: 'voeu_pau_2'
-    },
-    {
-      talent: 'Pureté',
-      c1: 'Se montre toujours sincère (+1)', k1: 'voeu_pur_1',
-      c2: 'Aucune relation sexuelle, psychotrope ou aliment carné (+1)', k2: 'voeu_pur_2'
-    }
-  );
-  const ownedVows = vowsDefs.filter(function(v) { return st.talents.includes(v.talent); });
-  if (ownedVows.length > 0) {
-    const vowBox = el('div', 'bg-amber-50 border space-y-2');
-    vowBox.appendChild(el('strong', '', 'Vœux du mage :'));
-    ownedVows.forEach(function(v) {
-      const vCard = el('div', 'border space-y-2');
-      vCard.style.background = '#fff';
-      vCard.appendChild(el('strong', '', 'Vœu : ' + v.talent));
-      vCard.appendChild(makeRituelChk(v.c1, v.k1, false));
-      vCard.appendChild(makeRituelChk(v.c2, v.k2, false));
-      vowBox.appendChild(vCard);
-    });
-    mount.appendChild(vowBox);
-  }
-
-  const pow = computeMagicPower(char, st, null);
-  const summary = el('div', 'border bg-stone-50');
-  summary.style.fontSize = '11px';
-  let sumTxt = 'Détail Pouvoir de base : ' + pow.parts.join(', ');
-  if (pow.extraTimeDice > 0) sumTxt += ' | Temps supplémentaire : ' + pow.extraTimeDice + 'd6 × 10 min';
-  if (pow.stealthMalus > 0) sumTxt += ' | Discrétion : -1';
-  summary.textContent = sumTxt;
-  mount.appendChild(summary);
-
-  const pSign = pow.total >= 0 ? '+' : '';
-  const pBtn = el('button', 'bg-purple-700', 'Test de Pouvoir brut (1d20 ' + pSign + pow.total + ')');
-  pBtn.style.width = '100%';
-  pBtn.disabled = !isOwner;
+if (isOwner) pBtn.onclick = function() { rollMagicTest(char, 'Pouvoir brut', pow); };
+mount.appendChild(pBtn);
+const knownSpells = st.sorts || new Array();
+const spBox = el('div', 'border space-y-2');
+spBox.appendChild(el('strong', '', 'Sorts connus (' + knownSpells.length + ') :'));
+if (knownSpells.length === 0) {
+spBox.appendChild(el('div', '', 'Aucun sort appris (géré lors du passage de niveau).'));
+} else {
+const spGrid = el('div', 'grid grid-cols-2');
+knownSpells.forEach(function(sp) {
+const spPow = computeMagicPower(char, st, sp);
+const spSign = spPow.total >= 0 ? '+' : '';
+const fatTag = spPow.noSpellFatigue ? ' [Sans fatigue]' : '';
+const bCast = el('button', 'border bg-stone-50', sp.nom + ' (' + sp.voie + ') — 1d20 ' + spSign + spPow.total + fatTag);
+bCast.style.textAlign = 'left';
+bCast.disabled = !isOwner;
+if (isOwner) bCast.onclick = function() { rollMagicTest(char, sp.nom + ' (' + sp.voie + ')', spPow); };
+spGrid.appendChild(bCast);
+});
+spBox.appendChild(spGrid);
+}
+mount.appendChild(spBox);
+}
 
 
 

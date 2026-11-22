@@ -2345,9 +2345,12 @@ function computeCombatStats(char, p) {
   const alliesDefensive = allies.filter(function(other) { return other.posture === 'Défensif'; });
 
   let attCarac = (st.caracs['Force'] || 10) - 10;
-  if (st.talents.includes('Finesse') && st.caracs['Force'] >= (mainWeapon.force_min || 5) + 1) {
+  const secWeaponReq = (secItem && secItem.categorie === 'Arme') ? (secItem.force_min || 5) : 0;
+  const maxForceReq = Math.max(mainWeapon.force_min || 5, secWeaponReq);
+  if (st.talents.includes('Finesse') && st.caracs['Force'] >= maxForceReq + 1) {
     attCarac = Math.max(attCarac, (st.caracs['Agilité'] || 10) - 10);
   }
+
   let att = attCarac + (mainWeapon.degat || 0) + posObj.att + adjMan.att + st.emotionObj.att - st.fatigue - st.maxWoundMalus + (parseInt(p.temp_att) || 0);
 
   if (st.caracs['Force'] < (mainWeapon.force_min || 5)) att -= ((mainWeapon.force_min || 5) - st.caracs['Force']);

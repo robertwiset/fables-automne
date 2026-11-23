@@ -1142,23 +1142,7 @@ function resetCreationForm() {
 
 
 function handlePortraitUpload(input) {
-  const file = input.files.item(0);
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = function(ev) {
-    const img = new Image();
-    img.onload = function() {
-      const canvas = document.createElement('canvas');
-      canvas.width = 128; canvas.height = 128;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, 128, 128);
-      CREATE_PORTRAIT = canvas.toDataURL('image/jpeg', 0.75);
-      const prev = document.getElementById('c-portrait-preview');
-      if (prev) prev.src = CREATE_PORTRAIT;
-    };
-    img.src = ev.target.result;
-  };
-  reader.readAsDataURL(file);
+  openPortraitCropper(input, 'normal');
 }
 
 function initCreationForm() {
@@ -3641,6 +3625,193 @@ CAREER_DRAFT = null;
 await updateCharData(charId, cleanData);
 alert("Plan de carrière mis à jour !");
 }
-  
+
+function openPortraitCropper(input, mode) {
+  const file = input.files.item(0);
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    const img = new Image();
+    img.onload = function() {
+      showCropModal(img, mode);
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+  input.value = '';
+}
+
+function showCropModal(img, mode) {
+  const existing = document.getElementById('portrait-crop-modal');
+  if (existing) existing.remove();
+
+  const overlay = el('div', '');
+  overlay.id = 'portrait-crop-modal';
+  overlay.style.position = 'fixed';
+  overlay.style.top = '0'; overlay.style.left = '0'; overlay.style.right = '0'; overlay.style.bottom = '0';
+  overlay.style.background = 'rgba(0,0,0,0.75)';
+  overlay.style.zIndex = '9999';
+  overlay.style.display = 'flex';
+  overlay.style.alignItems = 'center';
+  overlay.style.justifyContent = 'center';
+  overlay.style.padding = '16px';
+
+  const modal = el('div', 'border space-y-3');
+  modal.style.background = '#fff';
+  modal.style.maxWidth = '560px';
+  modal.style.width = '100%';
+  modal.style.borderRadius = '8px';
+  modal.style.padding = '16px';
+
+  modal.appendChild(el('strong', '', 'Recadrer le portrait (dessinez un carré ou déplacez-le)'));
+
+  const maxDim = 420;
+  const scale = Math.min(maxDim / img.width, maxDim / img.height, 1);
+  const cw = Math.round(img.width * scale);
+  const ch = Math.round(img.height * scale);
+
+  const canvasWrap = el('div', '');
+  canvasWrap.style.textAlign = 'center';
+  const canvas = document.createElement('canvas');
+  canvas.width = cw;
+  canvas.height = ch;
+  canvas.style.border = '1px solid #a8a29e';
+  canvas.style.cursor = 'crosshair';
+  canvas.style.touchAction = 'none';
+  canvas.style.maxWidth = '100%';
+  canvasWrap.appendChild(canvas);
+  modal.appendChild(canvasWrap);
+
+  const initSize = Math.round(Math.min(cw, ch) * 0.7);
+  let crop = {
+    x: Math.round((cw - initSize) / 2),
+    y: Math.round((ch - initSize) / 2),
+    size: initSize
+  };
+
+  let dragMode = null;
+  let startX = 0, startY = 0, origX = 0, origY = 0;
+
+  const draw = function() {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, cw, ch);
+    ctx.drawImage(img, 0, 0, cw, ch);
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+    ctx.fillRect(0, 0, cw, crop.y);
+    ctx.fillRect(0, crop.y + crop.size, cw, ch - (crop.y + crop.size));
+    ctx.fillRect(0, crop.y, crop.x, crop.size);
+    ctx.fillRect(crop.x + crop.size, crop.y, cw - (crop.x + crop.size), crop.size);
+
+    ctx.strokeStyle = '#f59e0b';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(crop.x, crop.y, crop.size, crop.size);
+
+    ctx.beginPath();
+    ctx.arc(crop.x + crop.size / 2, crop.y + crop.size / 2, crop.size / 2, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  };
+
+  const getPos = function(e) {
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.touches ? e.touches.item(0).clientX : e.clientX;
+    const clientY = e.touches ? e.touches.item(0).clientY : e.clientY;
+    return {
+      x: (clientX - rect.left) * (cw / rect.width),
+      y: (clientY - rect.top) * (ch / rect.height)
+    };
+  };
+
+  const onDown = function(e) {
+    e.preventDefault();
+    const p = getPos(e);
+    startX = p.x; startY = p.y;
+    if (p.x >= crop.x && p.x <= crop.x + crop.size && p.y >= crop.y && p.y <= crop.y + crop.size) {
+      dragMode = 'move';
+      origX = crop.x; origY = crop.y;
+    } else {
+      dragMode = 'draw';
+      crop = { x: p.x, y: p.y, size: 10 };
+    }
+    draw();
+  };
+
+  const onMove = function(e) {
+    if (!dragMode) return;
+    e.preventDefault();
+    const p = getPos(e);
+    if (dragMode === 'move') {
+      crop.x = Math.max(0, Math.min(cw - crop.size, origX + (p.x - startX)));
+      crop.y = Math.max(0, Math.min(ch - crop.size, origY + (p.y - startY)));
+    } else if (dragMode === 'draw') {
+      const dx = p.x - startX;
+      const dy = p.y - startY;
+      let side = Math.max(Math.abs(dx), Math.abs(dy), 20);
+      const maxLeft = dx < 0 ? startX : (cw - startX);
+      const maxTop = dy < 0 ? startY : (ch - startY);
+      side = Math.min(side, maxLeft, maxTop);
+      crop.x = dx < 0 ? (startX - side) : startX;
+      crop.y = dy < 0 ? (startY - side) : startY;
+      crop.size = side;
+    }
+    draw();
+  };
+
+  const onUp = function() {
+    dragMode = null;
+  };
+
+  canvas.addEventListener('mousedown', onDown);
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
+  canvas.addEventListener('touchstart', onDown, { passive: false });
+  window.addEventListener('touchmove', onMove, { passive: false });
+  window.addEventListener('touchend', onUp);
+
+  const cleanup = function() {
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
+    window.removeEventListener('touchmove', onMove);
+    window.removeEventListener('touchend', onUp);
+    overlay.remove();
+  };
+
+  const btnRow = el('div', 'flex justify-between');
+  const bCancel = el('button', '', 'Annuler');
+  bCancel.onclick = cleanup;
+
+  const bOk = el('button', 'bg-emerald-800', 'Valider ce portrait');
+  bOk.onclick = function() {
+    const outCanvas = document.createElement('canvas');
+    outCanvas.width = 128;
+    outCanvas.height = 128;
+    const sx = crop.x / scale;
+    const sy = crop.y / scale;
+    const sSize = crop.size / scale;
+    outCanvas.getContext('2d').drawImage(img, sx, sy, sSize, sSize, 0, 0, 128, 128);
+    const dataUrl = outCanvas.toDataURL('image/jpeg', 0.8);
+
+    if (mode === 'free') {
+      FREE_PORTRAIT = dataUrl;
+      const prev = document.getElementById('fc-portrait-preview');
+      if (prev) prev.src = dataUrl;
+    } else {
+      CREATE_PORTRAIT = dataUrl;
+      const prev = document.getElementById('c-portrait-preview');
+      if (prev) prev.src = dataUrl;
+    }
+    cleanup();
+  };
+
+  btnRow.appendChild(bCancel);
+  btnRow.appendChild(bOk);
+  modal.appendChild(btnRow);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+  draw();
+}
+
 
 init();

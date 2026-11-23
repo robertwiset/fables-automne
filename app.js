@@ -2406,118 +2406,7 @@ async function removeFromCombat(charId) {
   await sb.from('combat_state').update({ participants: parts }).eq('id', 1);
 }
 
-function computeCombatStats(char, p) {
-  const st = getEffectiveState(char);
-  const posObj = RULES.postures.find(function(x) { return x.nom === p.posture; }) || RULES.postures.at(0);
-  const mList = COMBAT.status === 'phase2' ? RULES.manoeuvres_finales : RULES.manoeuvres_initiales;
-  const manObj = mList.find(function(x) { return x.nom === p.manoeuvre; }) || { att: 0, def: 0 };
-  const adjMan = getAdjustedManoeuvreMods(st, manObj, p.posture);
 
-  const defaultFists = { nom: "Poings", categorie: "Arme", famille: "Lutte", mains: 1, poids: 0, force_min: 5, degat: 0, portee: 0 };
-  const mainWeapon = st.equipped['MainPrincipale'] || st.inv.at(st.worn['MainPrincipale']) || defaultFists;
-  const secItem = st.equipped['MainSecondaire'] || st.inv.at(st.worn['MainSecondaire']) || null;
-
-  const isRanged = new Array('Arcs', 'Arbalètes', 'Frondes', 'Armes de jet').includes(mainWeapon.famille);
-  const cov = getCoverTotals();
-
-  const allies = (COMBAT && COMBAT.participants ? COMBAT.participants : new Array()).filter(function(other) {
-    return other.camp === p.camp && other.char_id !== p.char_id;
-  });
-  const alliesSamePosture = allies.filter(function(other) { return other.posture === p.posture; });
-  const alliesAggressive = allies.filter(function(other) { return other.posture === 'Agressif'; });
-  const alliesDefensive = allies.filter(function(other) { return other.posture === 'Défensif'; });
-
-  let attCarac = (st.caracs['Force'] || 10) - 10;
-  const secWeaponReq = (secItem && secItem.categorie === 'Arme') ? (secItem.force_min || 5) : 0;
-  const maxForceReq = Math.max(mainWeapon.force_min || 5, secWeaponReq);
-  if (st.talents.includes('Finesse') && st.caracs['Force'] >= maxForceReq + 1) {
-    attCarac = Math.max(attCarac, (st.caracs['Agilité'] || 10) - 10);
-  }
-
-  let att = attCarac + (mainWeapon.degat || 0) + posObj.att + adjMan.att + st.emotionObj.att - st.fatigue - st.maxWoundMalus + (parseInt(p.temp_att) || 0);
-
-  if (st.caracs['Force'] < (mainWeapon.force_min || 5)) att -= ((mainWeapon.force_min || 5) - st.caracs['Force']);
-  if (secItem) {
-    if (secItem.categorie === 'Arme') att += (secItem.degat || 0);
-    if (!st.talents.includes('Ambidextrie')) att -= 2;
-  }
-  const trainedFamilies = ((st.talentChoices && st.talentChoices['Entraînement aux armes']) ? st.talentChoices['Entraînement aux armes'] : new Array()).map(normFamilyName);
-  if (st.talents.includes('Entraînement aux armes') && trainedFamilies.includes(normFamilyName(mainWeapon.famille))) {
-    att += 1;
-  }
-
-  const privChoices = (st.talentChoices && st.talentChoices['Arme privilégiée']) ? st.talentChoices['Arme privilégiée'] : new Array();
-  const isPrivilegedWeapon = st.talents.includes('Arme privilégiée') && privChoices.some(function(ch) {
-    const parts = ch.split(' : ');
-    const wName = parts.length > 1 ? parts.slice(1).join(' : ') : ch;
-    return wName.toLowerCase().trim() === (mainWeapon.nom || '').toLowerCase().trim();
-  });
-  if (isPrivilegedWeapon) {
-    att += 1;
-  }
-
-  if (st.talents.includes('Balayage') && mainWeapon.mains === 2 && !isRanged) att += 2;
-
-  if (st.talents.includes('Charge') && p.posture === 'Agressif') att += 1;
-  if (st.talents.includes('Tirailleur') && p.posture === 'Repli' && isRanged) att += 1;
-  if (st.talents.includes('Acuité') && isRanged) att += 1;
-  if (st.talents.includes('Rage') && p.posture === 'Agressif' && !isRanged) att += 2;
-
-  if (st.talents.includes('Coordination tactique')) {
-    att += Math.min(2, Math.floor(alliesSamePosture.length / 2));
-  }
-  if (st.talents.includes('Gloire') && alliesAggressive.length >= 2) {
-    att += 1;
-  }
-
-  let effectiveCovMalus = cov.malus;
-  if (st.talents.includes('Nyctalopie') && SCENE.cover_light === 'Obscurité relative') {
-    effectiveCovMalus += 1;
-  }
-
-  if (posObj.couv_att === 'malus') att += effectiveCovMalus;
-  if (posObj.couv_att === 'bonus') att += cov.bonus * (st.talents.includes('Opportunisme') ? 2 : 1);
-  att = Math.max(0, att);
-
-
-  let def = ((st.caracs['Agilité'] || 10) - 10) + st.armorDef + posObj.def + adjMan.def + st.emotionObj.def - st.fatigue - st.maxWoundMalus + (parseInt(p.temp_def) || 0);
-  if (!posObj.sans_portee) def += (mainWeapon.portee || 0);
-  if (secItem && secItem.categorie === 'Bouclier') def += (secItem.def || 0);
-  if (st.talents.includes('Esquive')) def += 1;
-  if (st.talents.includes('Parade') && !isRanged && mainWeapon.nom !== 'Poings') def += 1;
-
-  if (st.talents.includes('Rempart') && p.posture === 'Défensif' && !isRanged) {
-    const hasShieldOrHast = (secItem && secItem.categorie === 'Bouclier') || mainWeapon.famille === "Arme d'hast";
-    const allyHasRempartFormation = hasShieldOrHast && alliesDefensive.some(function(other) {
-      const oChar = CHARACTERS.find(function(c) { return c.id === other.char_id; });
-      if (!oChar) return false;
-      const oSt = getEffectiveState(oChar);
-      if (!oSt.talents.includes('Rempart')) return false;
-      const oMain = oSt.equipped['MainPrincipale'] || oSt.inv.at(oSt.worn['MainPrincipale']) || defaultFists;
-      const oSec = oSt.equipped['MainSecondaire'] || oSt.inv.at(oSt.worn['MainSecondaire']) || null;
-      return (oSec && oSec.categorie === 'Bouclier') || oMain.famille === "Arme d'hast";
-    });
-    def += allyHasRempartFormation ? 2 : 1;
-  }
-
-  if (st.talents.includes('Entraînement tactique')) {
-    def += Math.min(2, Math.floor(alliesSamePosture.length / 2));
-  }
-  if (st.talents.includes('Gloire') && alliesDefensive.length >= 2) {
-    def += 1;
-  }
-
-  if (st.talents.includes('Volée') && p.posture === 'Défensif' && new Array('Arcs', 'Arbalètes', 'Frondes').includes(mainWeapon.famille)) def += 1;
-  if (st.talents.includes('Tirailleur') && p.posture === 'Repli' && isRanged) def += 1;
-  if (st.talents.includes('Acuité') && isRanged) def += 1;
-  if (st.talents.includes('Ténacité') && p.posture === 'Défensif' && !isRanged) def += 2;
-
-  if (posObj.couv_def === 'malus') def += effectiveCovMalus;
-  if (posObj.couv_def === 'bonus') def += cov.bonus * (st.talents.includes('Opportunisme') ? 2 : 1);
-  def = Math.max(0, def);
-
-  return { att: att, def: def };
-}
 
 
 async function rollCombatCamp(camp) {
@@ -2564,6 +2453,201 @@ async function nextCombatPhase() {
   await sb.from('combat_state').update({ status: 'phase2', participants: parts, roll_camp_a: null, roll_camp_b: null, phase2_result: null }).eq('id', 1);
 }
 
+
+function computeCombatStats(char, p) {
+  const st = getEffectiveState(char);
+  const posObj = RULES.postures.find(function(x) { return x.nom === p.posture; }) || RULES.postures.at(0);
+  const mList = COMBAT.status === 'phase2' ? RULES.manoeuvres_finales : RULES.manoeuvres_initiales;
+  const manObj = mList.find(function(x) { return x.nom === p.manoeuvre; }) || { att: 0, def: 0 };
+  const adjMan = getAdjustedManoeuvreMods(st, manObj, p.posture);
+
+  const defaultFists = { nom: "Poings", categorie: "Arme", famille: "Lutte", mains: 1, poids: 0, force_min: 5, degat: 0, portee: 0 };
+  const mainWeapon = st.equipped['MainPrincipale'] || st.inv.at(st.worn['MainPrincipale']) || defaultFists;
+  const secItem = st.equipped['MainSecondaire'] || st.inv.at(st.worn['MainSecondaire']) || null;
+
+  const isRanged = new Array('Arcs', 'Arbalètes', 'Frondes', 'Armes de jet').includes(mainWeapon.famille);
+  const cov = getCoverTotals();
+
+  const allies = (COMBAT && COMBAT.participants ? COMBAT.participants : new Array()).filter(function(other) {
+    return other.camp === p.camp && other.char_id !== p.char_id;
+  });
+  const alliesSamePosture = allies.filter(function(other) { return other.posture === p.posture; });
+  const alliesAggressive = allies.filter(function(other) { return other.posture === 'Agressif'; });
+  const alliesDefensive = allies.filter(function(other) { return other.posture === 'Défensif'; });
+
+  const attParts = new Array();
+  const defParts = new Array();
+
+  let attCarac = (st.caracs['Force'] || 10) - 10;
+  let attCaracLabel = 'Force';
+  const secWeaponReq = (secItem && secItem.categorie === 'Arme') ? (secItem.force_min || 5) : 0;
+  const maxForceReq = Math.max(mainWeapon.force_min || 5, secWeaponReq);
+  if (st.talents.includes('Finesse') && st.caracs['Force'] >= maxForceReq + 1) {
+    const agiMod = (st.caracs['Agilité'] || 10) - 10;
+    if (agiMod > attCarac) {
+      attCarac = agiMod;
+      attCaracLabel = 'Agilité (Finesse)';
+    }
+  }
+  let att = attCarac;
+  attParts.push(attCaracLabel + ' ' + (attCarac >= 0 ? '+' : '') + attCarac);
+
+  if (mainWeapon.degat) {
+    att += mainWeapon.degat;
+    attParts.push(mainWeapon.nom + ' +' + mainWeapon.degat);
+  }
+  if (posObj.att) {
+    att += posObj.att;
+    attParts.push('Posture ' + posObj.nom + ' ' + (posObj.att >= 0 ? '+' : '') + posObj.att);
+  }
+  if (adjMan.att) {
+    att += adjMan.att;
+    attParts.push('Manœuvre ' + (adjMan.att >= 0 ? '+' : '') + adjMan.att);
+  }
+  if (st.emotionObj.att) {
+    att += st.emotionObj.att;
+    attParts.push('Émotion ' + (st.emotionObj.att >= 0 ? '+' : '') + st.emotionObj.att);
+  }
+  if (st.fatigue > 0) {
+    att -= st.fatigue;
+    attParts.push('Fatigue -' + st.fatigue);
+  }
+  if (st.maxWoundMalus > 0) {
+    att -= st.maxWoundMalus;
+    attParts.push('Blessure -' + st.maxWoundMalus);
+  }
+  const tAtt = parseInt(p.temp_att) || 0;
+  if (tAtt !== 0) {
+    att += tAtt;
+    attParts.push('Temp ' + (tAtt >= 0 ? '+' : '') + tAtt);
+  }
+
+  if (st.caracs['Force'] < (mainWeapon.force_min || 5)) {
+    const fMalus = (mainWeapon.force_min || 5) - st.caracs['Force'];
+    att -= fMalus;
+    attParts.push('Force insuffisante -' + fMalus);
+  }
+  if (secItem) {
+    if (secItem.categorie === 'Arme' && secItem.degat) {
+      att += secItem.degat;
+      attParts.push(secItem.nom + ' +' + secItem.degat);
+    }
+    if (!st.talents.includes('Ambidextrie')) {
+      att -= 2;
+      attParts.push('2e main (' + secItem.nom + ') -2');
+    }
+  }
+
+  const trainedFamilies = ((st.talentChoices && st.talentChoices['Entraînement aux armes']) ? st.talentChoices['Entraînement aux armes'] : new Array()).map(normFamilyName);
+  if (st.talents.includes('Entraînement aux armes') && trainedFamilies.includes(normFamilyName(mainWeapon.famille))) {
+    att += 1;
+    attParts.push('Entraînement armes +1');
+  }
+
+  const privChoices = (st.talentChoices && st.talentChoices['Arme privilégiée']) ? st.talentChoices['Arme privilégiée'] : new Array();
+  const isPrivilegedWeapon = st.talents.includes('Arme privilégiée') && privChoices.some(function(ch) {
+    const parts = ch.split(' : ');
+    const wName = parts.length > 1 ? parts.slice(1).join(' : ') : ch;
+    return wName.toLowerCase().trim() === (mainWeapon.nom || '').toLowerCase().trim();
+  });
+  if (isPrivilegedWeapon) {
+    att += 1;
+    attParts.push('Arme privilégiée +1');
+  }
+
+  if (st.talents.includes('Balayage') && mainWeapon.mains === 2 && !isRanged) { att += 2; attParts.push('Balayage +2'); }
+  if (st.talents.includes('Charge') && p.posture === 'Agressif') { att += 1; attParts.push('Charge +1'); }
+  if (st.talents.includes('Tirailleur') && p.posture === 'Repli' && isRanged) { att += 1; attParts.push('Tirailleur +1'); }
+  if (st.talents.includes('Acuité') && isRanged) { att += 1; attParts.push('Acuité +1'); }
+  if (st.talents.includes('Rage') && p.posture === 'Agressif' && !isRanged) { att += 2; attParts.push('Rage +2'); }
+
+  if (st.talents.includes('Coordination tactique')) {
+    const ctBonus = Math.min(2, Math.floor(alliesSamePosture.length / 2));
+    if (ctBonus > 0) { att += ctBonus; attParts.push('Coordination tactique +' + ctBonus); }
+  }
+  if (st.talents.includes('Gloire') && alliesAggressive.length >= 2) {
+    att += 1;
+    attParts.push('Gloire +1');
+  }
+
+  let effectiveCovMalus = cov.malus;
+  if (st.talents.includes('Nyctalopie') && SCENE.cover_light === 'Obscurité relative') {
+    effectiveCovMalus += 1;
+  }
+
+  if (posObj.couv_att === 'malus' && effectiveCovMalus !== 0) {
+    att += effectiveCovMalus;
+    attParts.push('Couverture ' + effectiveCovMalus);
+  }
+  if (posObj.couv_att === 'bonus' && cov.bonus !== 0) {
+    const cBon = cov.bonus * (st.talents.includes('Opportunisme') ? 2 : 1);
+    att += cBon;
+    attParts.push('Couverture +' + cBon);
+  }
+  att = Math.max(0, att);
+
+  const agiDef = (st.caracs['Agilité'] || 10) - 10;
+  let def = agiDef;
+  defParts.push('Agilité ' + (agiDef >= 0 ? '+' : '') + agiDef);
+
+  if (st.armorDef) { def += st.armorDef; defParts.push('Armure +' + st.armorDef); }
+  if (posObj.def) { def += posObj.def; defParts.push('Posture ' + (posObj.def >= 0 ? '+' : '') + posObj.def); }
+  if (adjMan.def) { def += adjMan.def; defParts.push('Manœuvre ' + (adjMan.def >= 0 ? '+' : '') + adjMan.def); }
+  if (st.emotionObj.def) { def += st.emotionObj.def; defParts.push('Émotion ' + (st.emotionObj.def >= 0 ? '+' : '') + st.emotionObj.def); }
+  if (st.fatigue > 0) { def -= st.fatigue; defParts.push('Fatigue -' + st.fatigue); }
+  if (st.maxWoundMalus > 0) { def -= st.maxWoundMalus; defParts.push('Blessure -' + st.maxWoundMalus); }
+  const tDef = parseInt(p.temp_def) || 0;
+  if (tDef !== 0) { def += tDef; defParts.push('Temp ' + (tDef >= 0 ? '+' : '') + tDef); }
+
+  if (!posObj.sans_portee && mainWeapon.portee) { def += mainWeapon.portee; defParts.push('Portée +' + mainWeapon.portee); }
+  if (secItem && secItem.categorie === 'Bouclier' && secItem.def) { def += secItem.def; defParts.push(secItem.nom + ' +' + secItem.def); }
+  if (st.talents.includes('Esquive')) { def += 1; defParts.push('Esquive +1'); }
+  if (st.talents.includes('Parade') && !isRanged && mainWeapon.nom !== 'Poings') { def += 1; defParts.push('Parade +1'); }
+
+  if (st.talents.includes('Rempart') && p.posture === 'Défensif' && !isRanged) {
+    const hasShieldOrHast = (secItem && secItem.categorie === 'Bouclier') || mainWeapon.famille === "Arme d'hast";
+    const allyHasRempartFormation = hasShieldOrHast && alliesDefensive.some(function(other) {
+      const oChar = CHARACTERS.find(function(c) { return c.id === other.char_id; });
+      if (!oChar) return false;
+      const oSt = getEffectiveState(oChar);
+      if (!oSt.talents.includes('Rempart')) return false;
+      const oMain = oSt.equipped['MainPrincipale'] || oSt.inv.at(oSt.worn['MainPrincipale']) || defaultFists;
+      const oSec = oSt.equipped['MainSecondaire'] || oSt.inv.at(oSt.worn['MainSecondaire']) || null;
+      return (oSec && oSec.categorie === 'Bouclier') || oMain.famille === "Arme d'hast";
+    });
+    const rBon = allyHasRempartFormation ? 2 : 1;
+    def += rBon;
+    defParts.push('Rempart +' + rBon);
+  }
+
+  if (st.talents.includes('Entraînement tactique')) {
+    const etBonus = Math.min(2, Math.floor(alliesSamePosture.length / 2));
+    if (etBonus > 0) { def += etBonus; defParts.push('Entraînement tactique +' + etBonus); }
+  }
+  if (st.talents.includes('Gloire') && alliesDefensive.length >= 2) {
+    def += 1;
+    defParts.push('Gloire +1');
+  }
+
+  if (st.talents.includes('Volée') && p.posture === 'Défensif' && new Array('Arcs', 'Arbalètes', 'Frondes').includes(mainWeapon.famille)) { def += 1; defParts.push('Volée +1'); }
+  if (st.talents.includes('Tirailleur') && p.posture === 'Repli' && isRanged) { def += 1; defParts.push('Tirailleur +1'); }
+  if (st.talents.includes('Acuité') && isRanged) { def += 1; defParts.push('Acuité +1'); }
+  if (st.talents.includes('Ténacité') && p.posture === 'Défensif' && !isRanged) { def += 2; defParts.push('Ténacité +2'); }
+
+  if (posObj.couv_def === 'malus' && effectiveCovMalus !== 0) {
+    def += effectiveCovMalus;
+    defParts.push('Couverture ' + effectiveCovMalus);
+  }
+  if (posObj.couv_def === 'bonus' && cov.bonus !== 0) {
+    const cDefBon = cov.bonus * (st.talents.includes('Opportunisme') ? 2 : 1);
+    def += cDefBon;
+    defParts.push('Couverture +' + cDefBon);
+  }
+  def = Math.max(0, def);
+
+  return { att: att, def: def, attParts: attParts, defParts: defParts };
+}
+
 function renderCombat() {
   const statusEl = document.getElementById('combat-status-banner');
   const resBox = document.getElementById('combat-results-box');
@@ -2582,96 +2666,130 @@ function renderCombat() {
   statusEl.textContent = 'Combat (' + COMBAT.combat_type.toUpperCase() + ') — ' + (COMBAT.status === 'phase1' ? 'PHASE INITIALE' : 'PHASE FINALE') + ' | Prêts : ' + readyCount + '/' + allParts.length;
 
   const btnA = document.getElementById('btn-roll-a');
+  const btnB = document.getElementById('btn-roll-b');
+  btnA.disabled = !allReady || COMBAT.roll_camp_a !== null;
+  btnB.disabled = !allReady || COMBAT.roll_camp_b !== null;
+  btnA.textContent = COMBAT.roll_camp_a !== null ? ('Dé Camp A : ' + COMBAT.roll_camp_a) : (allReady ? 'Lancer dé Camp A' : 'En attente des joueurs prêts');
+  btnB.textContent = COMBAT.roll_camp_b !== null ? ('Dé Camp B : ' + COMBAT.roll_camp_b) : (allReady ? 'Lancer dé Camp B' : 'En attente des joueurs prêts');
 
-const btnB = document.getElementById('btn-roll-b');
-btnA.disabled = !allReady || COMBAT.roll_camp_a !== null;
-btnB.disabled = !allReady || COMBAT.roll_camp_b !== null;
-btnA.textContent = COMBAT.roll_camp_a !== null ? ('Dé Camp A : ' + COMBAT.roll_camp_a) : (allReady ? 'Lancer dé Camp A' : 'En attente des joueurs prêts');
-btnB.textContent = COMBAT.roll_camp_b !== null ? ('Dé Camp B : ' + COMBAT.roll_camp_b) : (allReady ? 'Lancer dé Camp B' : 'En attente des joueurs prêts');
-new Array('A', 'B').forEach(function(camp) {
-const listEl = document.getElementById(camp === 'A' ? 'combat-list-a' : 'combat-list-b');
-listEl.innerHTML = '';
-const campParts = allParts.filter(function(p) { return p.camp === camp; });
-campParts.forEach(function(p) {
-const char = CHARACTERS.find(function(c) { return c.id === p.char_id; });
-if (!char) return;
-const isOwner = char.owner_id === CURRENT_USER.id;
-const visible = char.is_public || isOwner;
-const stats = computeCombatStats(char, p);
-const eligList = getEligibleManoeuvres(char, p.posture, COMBAT.status);
-const selManObj = eligList.find(function(m) { return m.nom === p.manoeuvre; }) || eligList.at(0) || { nom: '', comp: null, effet: '' };
-const card = el('div', 'border space-y-2 ' + (p.ready ? 'bg-amber-50' : 'bg-stone-50'));
-const top = el('div', 'flex justify-between');
-top.appendChild(el('strong', '', char.name + (visible ? ' (Att: ' + stats.att + ' | Déf: ' + stats.def + ')' : ' (Masqué)')));
-const rightCtrl = el('div', 'flex');
-if (isOwner) {
-const bReady = el('button', p.ready ? 'bg-emerald-700' : '', p.ready ? 'Prêt ✓' : 'Pas prêt');
-bReady.style.fontSize = '11px';
-bReady.onclick = function() { updateCombatParticipant(char.id, 'ready', !p.ready); };
-const bRem = el('button', '', 'Retirer'); bRem.style.color = '#dc2626'; bRem.style.fontSize = '11px';
-bRem.onclick = function() { removeFromCombat(char.id); };
-rightCtrl.appendChild(bReady); rightCtrl.appendChild(bRem);
-} else {
-rightCtrl.appendChild(el('span', '', p.ready ? 'Prêt ✓' : 'En choix...'));
-}
-top.appendChild(rightCtrl);
-card.appendChild(top);
-if (isOwner) {
-const ctrl = el('div', 'flex');
-const selPos = el('select', '');
-RULES.postures.forEach(function(pos) {
-const o = el('option', '', pos.nom); o.value = pos.nom;
-if (p.posture === pos.nom) o.selected = true;
-selPos.appendChild(o);
-});
-selPos.onchange = function() { updateCombatParticipant(char.id, 'posture', selPos.value); };
-const selMan = el('select', '');
-eligList.forEach(function(m) {
-const st = getEffectiveState(char);
-const adj = getAdjustedManoeuvreMods(st, m, p.posture);
-const o = el('option', '', m.nom + ' (Att ' + adj.att + ', Déf ' + adj.def + ')'); o.value = m.nom;
-if (p.manoeuvre === m.nom) o.selected = true;
-selMan.appendChild(o);
-});
-selMan.onchange = function() { updateCombatParticipant(char.id, 'manoeuvre', selMan.value); };
-const inpAtt = el('input', ''); inpAtt.type = 'number'; inpAtt.value = p.temp_att || 0; inpAtt.style.width = '50px'; inpAtt.title = 'Bonus/Malus temporaire Attaque';
-inpAtt.onchange = function() { updateCombatParticipant(char.id, 'temp_att', inpAtt.value); };
-const inpDef = el('input', ''); inpDef.type = 'number'; inpDef.value = p.temp_def || 0; inpDef.style.width = '50px'; inpDef.title = 'Bonus/Malus temporaire Défense';
-inpDef.onchange = function() { updateCombatParticipant(char.id, 'temp_def', inpDef.value); };
-ctrl.appendChild(selPos); ctrl.appendChild(selMan); ctrl.appendChild(inpAtt); ctrl.appendChild(inpDef);
-card.appendChild(ctrl);
-if (selManObj && selManObj.effet) {
-const infoBox = el('div', 'border space-y-2');
-infoBox.style.background = '#fff'; infoBox.style.fontSize = '11px';
-infoBox.appendChild(el('div', '', selManObj.effet));
-card.appendChild(infoBox);
-}
-} else {
-card.appendChild(el('div', '', 'Posture : ' + p.posture + (visible ? ' | Manœuvre : ' + p.manoeuvre : '')));
-}
-listEl.appendChild(card);
-});
-});
-const res = COMBAT.status === 'phase2' ? COMBAT.phase2_result : COMBAT.phase1_result;
-if (res) {
-resBox.classList.remove('hidden');
-resBox.innerHTML = '';
-const isInitial = COMBAT.status === 'phase1';
+  new Array('A', 'B').forEach(function(camp) {
+    const listEl = document.getElementById(camp === 'A' ? 'combat-list-a' : 'combat-list-b');
+    listEl.innerHTML = '';
+    const campParts = allParts.filter(function(p) { return p.camp === camp; });
+    campParts.forEach(function(p) {
+      const char = CHARACTERS.find(function(c) { return c.id === p.char_id; });
+      if (!char) return;
+      const isOwner = char.owner_id === CURRENT_USER.id;
+      const visible = char.is_public || isOwner;
+      const stats = computeCombatStats(char, p);
+      const eligList = getEligibleManoeuvres(char, p.posture, COMBAT.status);
+      const selManObj = eligList.find(function(m) { return m.nom === p.manoeuvre; }) || eligList.at(0) || { nom: '', comp: null, effet: '' };
 
-const winner = res.scoreA > res.scoreB ? 'Camp A' : (res.scoreB > res.scoreA ? 'Camp B' : 'Égalité');
-const box = el('div', 'border bg-amber-50 space-y-2');
-box.appendChild(el('strong', '', 'Résultat ' + (isInitial ? 'Phase Initiale' : 'Phase Finale') + ' :'));
-box.appendChild(el('div', '', 'Camp A : Attaque ' + res.attA + ' + Dé (' + res.rollA + ') - Déf B (' + res.defB + ') = Score ' + res.scoreA + ' -> ' + res.woundsToB + ' blessure(s) infligée(s) au Camp B'));
-box.appendChild(el('div', '', 'Camp B : Attaque ' + res.attB + ' + Dé (' + res.rollB + ') - Déf A (' + res.defA + ') = Score ' + res.scoreB + ' -> ' + res.woundsToA + ' blessure(s) infligée(s) au Camp A'));
-box.appendChild(el('div', '', isInitial ? 'Tour initial : chaque camp répartit les blessures qu’il inflige à l’adversaire. Cliquez ensuite sur "Phase Finale".' : 'Tour final : chaque camp répartit entre ses membres les blessures qu’il subit.'));
-if (!isInitial || COMBAT.combat_type === 'escarmouche') {
-box.appendChild(el('strong', '', 'Vainqueur : ' + winner + ' (Score de Victoire : ' + Math.abs(res.scoreA - res.scoreB) + ')'));
+      const card = el('div', 'border space-y-2 ' + (p.ready ? 'bg-amber-50' : 'bg-stone-50'));
+      const top = el('div', 'flex justify-between');
+      top.appendChild(el('strong', '', char.name + (visible ? ' (Att: ' + stats.att + ' | Déf: ' + stats.def + ')' : ' (Masqué)')));
+
+      const rightCtrl = el('div', 'flex');
+      if (isOwner) {
+        const bReady = el('button', p.ready ? 'bg-emerald-700' : '', p.ready ? 'Prêt ✓' : 'Pas prêt');
+        bReady.style.fontSize = '11px';
+        bReady.onclick = function() { updateCombatParticipant(char.id, 'ready', !p.ready); };
+        const bRem = el('button', '', 'Retirer');
+        bRem.style.color = '#dc2626';
+        bRem.style.fontSize = '11px';
+        bRem.onclick = function() { removeFromCombat(char.id); };
+        rightCtrl.appendChild(bReady);
+        rightCtrl.appendChild(bRem);
+      } else {
+        rightCtrl.appendChild(el('span', '', p.ready ? 'Prêt ✓' : 'En choix...'));
+      }
+      top.appendChild(rightCtrl);
+      card.appendChild(top);
+
+      if (visible && stats.attParts && stats.defParts) {
+        const breakdown = el('div', '');
+        breakdown.style.fontSize = '11px';
+        breakdown.style.color = '#57534e';
+        breakdown.textContent = 'Att : ' + stats.attParts.join(', ') + ' | Déf : ' + stats.defParts.join(', ');
+        card.appendChild(breakdown);
+      }
+
+      if (isOwner) {
+        const ctrl = el('div', 'flex');
+        const selPos = el('select', '');
+        RULES.postures.forEach(function(pos) {
+          const o = el('option', '', pos.nom);
+          o.value = pos.nom;
+          if (p.posture === pos.nom) o.selected = true;
+          selPos.appendChild(o);
+        });
+        selPos.onchange = function() { updateCombatParticipant(char.id, 'posture', selPos.value); };
+
+        const selMan = el('select', '');
+        eligList.forEach(function(m) {
+          const st = getEffectiveState(char);
+          const adj = getAdjustedManoeuvreMods(st, m, p.posture);
+          const o = el('option', '', m.nom + ' (Att ' + adj.att + ', Déf ' + adj.def + ')');
+          o.value = m.nom;
+          if (p.manoeuvre === m.nom) o.selected = true;
+          selMan.appendChild(o);
+        });
+        selMan.onchange = function() { updateCombatParticipant(char.id, 'manoeuvre', selMan.value); };
+
+        const inpAtt = el('input', '');
+        inpAtt.type = 'number';
+        inpAtt.value = p.temp_att || 0;
+        inpAtt.style.width = '50px';
+        inpAtt.title = 'Bonus/Malus temporaire Attaque';
+        inpAtt.onchange = function() { updateCombatParticipant(char.id, 'temp_att', inpAtt.value); };
+
+        const inpDef = el('input', '');
+        inpDef.type = 'number';
+        inpDef.value = p.temp_def || 0;
+        inpDef.style.width = '50px';
+        inpDef.title = 'Bonus/Malus temporaire Défense';
+        inpDef.onchange = function() { updateCombatParticipant(char.id, 'temp_def', inpDef.value); };
+
+        ctrl.appendChild(selPos);
+        ctrl.appendChild(selMan);
+        ctrl.appendChild(inpAtt);
+        ctrl.appendChild(inpDef);
+        card.appendChild(ctrl);
+
+        if (selManObj && selManObj.effet) {
+          const infoBox = el('div', 'border space-y-2');
+          infoBox.style.background = '#fff';
+          infoBox.style.fontSize = '11px';
+          infoBox.appendChild(el('div', '', selManObj.effet));
+          card.appendChild(infoBox);
+        }
+      } else {
+        card.appendChild(el('div', '', 'Posture : ' + p.posture + (visible ? ' | Manœuvre : ' + p.manoeuvre : '')));
+      }
+      listEl.appendChild(card);
+    });
+  });
+
+  const res = COMBAT.status === 'phase2' ? COMBAT.phase2_result : COMBAT.phase1_result;
+  if (res) {
+    resBox.classList.remove('hidden');
+    resBox.innerHTML = '';
+    const isInitial = COMBAT.status === 'phase1';
+    const winner = res.scoreA > res.scoreB ? 'Camp A' : (res.scoreB > res.scoreA ? 'Camp B' : 'Égalité');
+    const box = el('div', 'border bg-amber-50 space-y-2');
+    box.appendChild(el('strong', '', 'Résultat ' + (isInitial ? 'Phase Initiale' : 'Phase Finale') + ' :'));
+    box.appendChild(el('div', '', 'Camp A : Attaque ' + res.attA + ' + Dé (' + res.rollA + ') - Déf B (' + res.defB + ') = Score ' + res.scoreA + ' -> ' + res.woundsToB + ' blessure(s) infligée(s) au Camp B'));
+    box.appendChild(el('div', '', 'Camp B : Attaque ' + res.attB + ' + Dé (' + res.rollB + ') - Déf A (' + res.defA + ') = Score ' + res.scoreB + ' -> ' + res.woundsToA + ' blessure(s) infligée(s) au Camp A'));
+    box.appendChild(el('div', '', isInitial ? 'Tour initial : chaque camp répartit les blessures qu’il inflige à l’adversaire. Cliquez ensuite sur "Phase Finale".' : 'Tour final : chaque camp répartit entre ses membres les blessures qu’il subit.'));
+    if (!isInitial || COMBAT.combat_type === 'escarmouche') {
+      box.appendChild(el('strong', '', 'Vainqueur : ' + winner + ' (Score de Victoire : ' + Math.abs(res.scoreA - res.scoreB) + ')'));
+    }
+    resBox.appendChild(box);
+  } else {
+    resBox.classList.add('hidden');
+  }
 }
-resBox.appendChild(box);
-} else {
-resBox.classList.add('hidden');
-}
-}
+
 
 let FREE_CARACS = { Force: 10, Agilité: 10, Santé: 10, Connaissance: 10, Perception: 10, Présence: 10 };
 let FREE_PORTRAIT = '';

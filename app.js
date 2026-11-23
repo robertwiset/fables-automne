@@ -1622,8 +1622,19 @@ async function transferCharacter(charId) {
 
 
 function renderManageSheet() {
-const header = el('div', 'flex justify-between border bg-stone-50');
+  const charId = document.getElementById('sheet-char-select').value;
+  const char = CHARACTERS.find(function(c) { return c.id === charId; });
+  const container = document.getElementById('manage-sheet-container');
+  container.innerHTML = '';
+  if (!char) { container.textContent = "Aucun personnage sélectionné."; return; }
+
+  const isOwner = char.owner_id === CURRENT_USER.id;
+  const st = getEffectiveState(char);
+
+  const header = el('div', 'flex justify-between border bg-stone-50');
   const titleWrap = el('div', 'flex');
+
+  
   const mPortrait = el('img', 'portrait-img');
   mPortrait.id = 'manage-portrait-preview';
   mPortrait.src = char.data.portrait || 'data:image/svg+xml;utf8,<svg xmlns="http://w3.org" width="64" height="64"><rect width="64" height="64" fill="%23d6d3d1"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-size="24" fill="%2357534e">?</text></svg>';

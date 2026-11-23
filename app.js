@@ -3663,12 +3663,13 @@ function showCropModal(img, mode) {
   modal.style.borderRadius = '8px';
   modal.style.padding = '16px';
 
-  modal.appendChild(el('strong', '', 'Recadrer le portrait (dessinez un carré ou déplacez-le)'));
+  modal.appendChild(el('strong', '', 'Recadrer le portrait (tirez un coin, tracez un carré ou déplacez-le)'));
 
   const maxDim = 420;
   const scale = Math.min(maxDim / img.width, maxDim / img.height, 1);
   const cw = Math.round(img.width * scale);
   const ch = Math.round(img.height * scale);
+  const maxAllowedSize = Math.min(cw, ch);
 
   const canvasWrap = el('div', '');
   canvasWrap.style.textAlign = 'center';
@@ -3682,15 +3683,27 @@ function showCropModal(img, mode) {
   canvasWrap.appendChild(canvas);
   modal.appendChild(canvasWrap);
 
-  const initSize = Math.round(Math.min(cw, ch) * 0.7);
+  const initSize = Math.round(maxAllowedSize * 0.7);
   let crop = {
     x: Math.round((cw - initSize) / 2),
     y: Math.round((ch - initSize) / 2),
     size: initSize
   };
 
+  const sizeRow = el('div', 'flex');
+  sizeRow.style.fontSize = '12px';
+  sizeRow.appendChild(el('span', '', 'Taille du carré :'));
+  const sizeSlider = el('input', '');
+  sizeSlider.type = 'range';
+  sizeSlider.min = 24;
+  sizeSlider.max = maxAllowedSize;
+  sizeSlider.value = crop.size;
+  sizeSlider.style.flex = '1';
+  sizeRow.appendChild(sizeSlider);
+  modal.appendChild(sizeRow);
+
   let dragMode = null;
-  let startX = 0, startY = 0, origX = 0, origY = 0;
+  let anchorX = 0, anchorY = 0, startX = 0, startY = 0, origX = 0, origY = 0;
 
   const draw = function() {
     const ctx = canvas.getContext('2d');
@@ -3709,9 +3722,36 @@ function showCropModal(img, mode) {
 
     ctx.beginPath();
     ctx.arc(crop.x + crop.size / 2, crop.y + crop.size / 2, crop.size / 2, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
     ctx.lineWidth = 1;
     ctx.stroke();
+
+    const hSize = 10;
+    const corners = new Array(
+      { x: crop.x, y: crop.y },
+      { x: crop.x + crop.size, y: crop.y },
+      { x: crop.x, y: crop.y + crop.size },
+      { x: crop.x + crop.size, y: crop.y + crop.size }
+    );
+    ctx.fillStyle = '#f59e0b';
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    corners.forEach(function(pt) {
+      ctx.fillRect(pt.x - hSize / 2, pt.y - hSize / 2, hSize, hSize);
+      ctx.strokeRect(pt.x - hSize / 2, pt.y - hSize / 2, hSize, hSize);
+    });
+
+    sizeSlider.value = Math.round(crop.size);
+  };
+
+  sizeSlider.oninput = function() {
+    const newSize = parseInt(sizeSlider.value, 10);
+    const centerX = crop.x + crop.size / 2;
+    const centerY = crop.y + crop.size / 2;
+    crop.size = newSize;
+    crop.x = Math.max(0, Math.min(cw - newSize, Math.round(centerX - newSize / 2)));
+    crop.y = Math.max(0, Math.min(ch - newSize, Math.round(centerY - newSize / 2)));
+    draw();
   };
 
   const getPos = function(e) {
@@ -3724,36 +3764,60 @@ function showCropModal(img, mode) {
     };
   };
 
+  const hitCorner = function(p) {
+    const tol = 14;
+    const list = new Array(
+      { name: 'tl', x: crop.x, y: crop.y, ax: crop.x + crop.size, ay: crop.y + crop.size },
+      { name: 'tr', x: crop.x + crop.size, y: crop.y, ax: crop.x, ay: crop.y + crop.size },
+      { name: 'bl', x: crop.x, y: crop.y + crop.size, ax: crop.x + crop.size, ay: crop.y },
+      { name: 'br', x: crop.x + crop.size, y: crop.y + crop.size, ax: crop.x, ay: crop.y }
+    );
+    return list.find(function(c) { return Math.abs(p.x - c.x) <= tol && Math.abs(p.y - c.y) <= tol; });
+  };
+
   const onDown = function(e) {
     e.preventDefault();
     const p = getPos(e);
     startX = p.x; startY = p.y;
-    if (p.x >= crop.x && p.x <= crop.x + crop.size && p.y >= crop.y && p.y <= crop.y + crop.size) {
+    const corner = hitCorner(p);
+    if (corner) {
+      dragMode = 'resize';
+      anchorX = corner.ax;
+      anchorY = corner.ay;
+    } else if (p.x >= crop.x && p.x <= crop.x + crop.size && p.y >= crop.y && p.y <= crop.y + crop.size) {
       dragMode = 'move';
       origX = crop.x; origY = crop.y;
     } else {
-      dragMode = 'draw';
-      crop = { x: p.x, y: p.y, size: 10 };
+      dragMode = 'resize';
+      anchorX = p.x;
+      anchorY = p.y;
+      crop = { x: p.x, y: p.y, size: 20 };
     }
     draw();
   };
 
   const onMove = function(e) {
-    if (!dragMode) return;
-    e.preventDefault();
     const p = getPos(e);
+    if (!dragMode) {
+      const c = hitCorner(p);
+      if (c) canvas.style.cursor = (c.name === 'tl' || c.name === 'br') ? 'nwse-resize' : 'nesw-resize';
+      else if (p.x >= crop.x && p.x <= crop.x + crop.size && p.y >= crop.y && p.y <= crop.y + crop.size) canvas.style.cursor = 'move';
+      else canvas.style.cursor = 'crosshair';
+      return;
+    }
+    e.preventDefault();
     if (dragMode === 'move') {
       crop.x = Math.max(0, Math.min(cw - crop.size, origX + (p.x - startX)));
       crop.y = Math.max(0, Math.min(ch - crop.size, origY + (p.y - startY)));
-    } else if (dragMode === 'draw') {
-      const dx = p.x - startX;
-      const dy = p.y - startY;
-      let side = Math.max(Math.abs(dx), Math.abs(dy), 20);
-      const maxLeft = dx < 0 ? startX : (cw - startX);
-      const maxTop = dy < 0 ? startY : (ch - startY);
+    } else if (dragMode === 'resize') {
+      const dx = p.x - anchorX;
+      const dy = p.y - anchorY;
+      let side = Math.max(Math.abs(dx), Math.abs(dy), 24);
+      const maxLeft = dx < 0 ? anchorX : (cw - anchorX);
+      const maxTop = dy < 0 ? anchorY : (ch - anchorY);
       side = Math.min(side, maxLeft, maxTop);
-      crop.x = dx < 0 ? (startX - side) : startX;
-      crop.y = dy < 0 ? (startY - side) : startY;
+      crop.x = dx < 0 ? (anchorX - side) : anchorX;
+      crop.y = dy < 0 ? (anchorY - side) : anchorY;
       crop.size = side;
     }
     draw();

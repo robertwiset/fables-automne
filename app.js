@@ -3101,10 +3101,41 @@ function validateAndCleanCareer(draft, maxLvl) {
     draft.talents_lvl1 = newLvl1Talents;
     draft.talent_choices_lvl1 = newLvl1Choices;
   } else {
-    (draft.talents_lvl1 || new Array()).forEach(function(tName) { talents.push(tName); });
-    Object.keys(draft.talent_choices_lvl1 || {}).forEach(function(k) {
-      choicesMap[k] = (draft.talent_choices_lvl1[k] || new Array()).slice();
+    const rawFreeTalents = (draft.talents_lvl1 || new Array()).slice();
+    const rawFreeChoices = draft.talent_choices_lvl1 || {};
+    const keptFreeTalents = new Array();
+    const keptFreeChoices = {};
+    const occFree = {};
+
+    rawFreeTalents.forEach(function(tName) {
+      if (!tName) return;
+      const occ = occFree[tName] || 0;
+      occFree[tName] = occ + 1;
+      const ch = getChoiceForInstance(rawFreeChoices, tName, occ);
+
+      if (!isTalentEligible(tName, caracs, keptFreeTalents, 30, choicesMap)) {
+        issues.push('Niveau 1 (PNJ/Créature) : talent "' + tName + '" retiré (prérequis non remplis)');
+        return;
+      }
+      const chList = getChoicesForTalent(tName, choicesMap);
+      if (chList) {
+        const used = choicesMap[tName] || new Array();
+        const avail = chList.filter(function(x) { return !used.includes(x); });
+        const finalCh = avail.includes(ch) ? ch : (avail.at(0) || '');
+        if (!finalCh) {
+          issues.push('Niveau 1 (PNJ/Créature) : option manquante pour "' + tName + '"');
+          return;
+        }
+        addChoice(tName, finalCh);
+        if (!keptFreeChoices[tName]) keptFreeChoices[tName] = new Array();
+        keptFreeChoices[tName].push(finalCh);
+      }
+      talents.push(tName);
+      keptFreeTalents.push(tName);
     });
+
+    draft.talents_lvl1 = keptFreeTalents;
+    draft.talent_choices_lvl1 = keptFreeChoices;
   }
 
   let prevPalierCarac = '';
@@ -3158,12 +3189,12 @@ function validateAndCleanCareer(draft, maxLvl) {
       occLvl[tName] = occ + 1;
       const ch = getChoiceForInstance(lvlChoices, tName, occ);
 
-      if (!isTalentEligible(tName, caracs, talents, lvl, choicesMap)) {
+      if (!isTalentEligible(tName, caracs, talents, lvl, choicesMap, knownSorts)) {
         issues.push('Niveau ' + lvl + ' : talent "' + tName + '" (prérequis ou voie non remplis)');
         validLvlTalents.push('');
         return;
       }
-      const chList = getChoicesForTalent(tName, choicesMap);
+      const chList = getChoicesForTalent(tName, choicesMap, knownSorts);
       if (chList) {
         const used = choicesMap[tName] || new Array();
         const avail = chList.filter(function(x) { return !used.includes(x); });
@@ -3203,20 +3234,27 @@ function validateAndCleanCareer(draft, maxLvl) {
 
     const oldSorts = ((draft.level_sorts || {})[lvl] || new Array()).slice();
     const newSorts = new Array();
+    const knownSortNames = knownSorts.map(function(s) { return s.nom; });
     neededSlots.forEach(function(voie, idx) {
       const vObj = (RULES.voies_magiques || new Array()).find(function(x) { return x.voie === voie; });
-      const availSorts = vObj ? vObj.sorts.filter(function(s) { return !knownSorts.includes(s); }) : new Array();
+      const availSorts = vObj ? vObj.sorts.filter(function(s) { return !knownSortNames.includes(s); }) : new Array();
       const prevSp = oldSorts.at(idx);
       if (prevSp && prevSp.voie === voie && availSorts.includes(prevSp.nom)) {
-        newSorts.push({ voie: voie, nom: prevSp.nom });
-        knownSorts.push(prevSp.nom);
+        const keptObj = { voie: voie, nom: prevSp.nom };
+        newSorts.push(keptObj);
+        knownSorts.push(keptObj);
+        knownSortNames.push(prevSp.nom);
       } else {
         if (prevSp && prevSp.nom) {
           issues.push('Niveau ' + lvl + ' : sort "' + prevSp.nom + '" réinitialisé (voie modifiée)');
         }
         const pick = availSorts.at(0) || '';
-        newSorts.push({ voie: voie, nom: pick });
-        if (pick) knownSorts.push(pick);
+        const newObj = { voie: voie, nom: pick };
+        newSorts.push(newObj);
+        if (pick) {
+          knownSorts.push(newObj);
+          knownSortNames.push(pick);
+        }
       }
     });
     if (!draft.level_sorts) draft.level_sorts = {};
@@ -3226,6 +3264,7 @@ function validateAndCleanCareer(draft, maxLvl) {
 
   return issues;
 }
+
 
 function applyCareerMutation(mutateFn) {
   const candidate = JSON.parse(JSON.stringify(CAREER_DRAFT));
@@ -3251,168 +3290,181 @@ function renderCareerEditor(char, container) {
   const bSave = el('button', 'bg-emerald-800', 'Enregistrer les modifications');
   bSave.onclick = function() { saveCareerEdition(char.id); };
   const bCancel = el('button', '', 'Annuler');
-bCancel.onclick = function() { toggleCareerEdit(char); };
-actBtns.appendChild(bSave); actBtns.appendChild(bCancel);
-topBar.appendChild(actBtns);
-box.appendChild(topBar);
-const lvl1Card = el('div', 'border space-y-3');
-lvl1Card.style.background = '#fff';
-lvl1Card.appendChild(el('strong', '', 'Niveau 1 — Création initiale'));
-const cGrid = el('div', 'grid grid-cols-6');
-const usedPts = Object.values(d.base_caracs || {}).reduce(function(a, b) { return a + (b - 8); }, 0);
-RULES.caracteristiques.forEach(function(cName) {
-const cell = el('div', 'border bg-stone-50');
-cell.style.textAlign = 'center'; cell.style.padding = '4px';
-cell.appendChild(el('div', '', cName));
-const ctrl = el('div', 'flex');
-ctrl.style.justifyContent = 'center'; ctrl.style.flexWrap = 'nowrap'; ctrl.style.gap = '4px';
-const bM = el('button', '', '-'); bM.style.padding = '1px 6px';
-bM.onclick = function() {
-const minV = isFree ? 0 : 8;
-if ((d.base_caracs[cName] || 8) <= minV) return;
-applyCareerMutation(function(cand) { cand.base_caracs[cName] -= 1; });
-};
-const vSp = el('strong', '', String(d.base_caracs[cName] || 8));
-const bP = el('button', '', '+'); bP.style.padding = '1px 6px';
-bP.onclick = function() {
-const maxV = isFree ? 20 : 12;
-if ((d.base_caracs[cName] || 8) >= maxV) return;
-if (!isFree && usedPts >= 14) return alert("Les 14 points de création sont déjà répartis (baissez d'abord une autre caractéristique).");
-applyCareerMutation(function(cand) { cand.base_caracs[cName] += 1; });
-};
-ctrl.appendChild(bM); ctrl.appendChild(vSp); ctrl.appendChild(bP);
-cell.appendChild(ctrl);
-cGrid.appendChild(cell);
-});
-lvl1Card.appendChild(cGrid);
-const curCaracs = Object.assign({}, d.base_caracs || {});
-const curTalents = new Array();
-const curChoices = {};
-const pushCurChoice = function(t, ch) {
-if (!t || !ch) return;
-if (!curChoices[t]) curChoices[t] = new Array();
-curChoices[t].push(ch);
-};
-if (!isFree) {
-if (d.peuple_carac) curCaracs[d.peuple_carac] = (curCaracs[d.peuple_carac] || 8) + 1;
-if (d.culture_carac) curCaracs[d.culture_carac] = (curCaracs[d.culture_carac] || 8) + 1;
-const origGrid = el('div', 'grid grid-cols-3');
-const pObj = RULES.peuples.find(function(p) { return p.nom === d.peuple; }) || RULES.peuples.at(0);
-const pDiv = el('div', 'space-y-2');
-pDiv.appendChild(el('strong', '', 'Peuple :'));
-const selP = el('select', ''); selP.style.width = '100%';
-RULES.peuples.forEach(function(p) { const o = el('option', '', p.nom); o.value = p.nom; if (d.peuple === p.nom) o.selected = true; selP.appendChild(o); });
-selP.onchange = function() {
-applyCareerMutation(function(cand) {
-const np = RULES.peuples.find(function(x) { return x.nom === selP.value; });
-cand.peuple = np.nom;
-cand.peuple_carac = np.caracs.at(0);
-cand.talents_lvl1[0] = np.talents.at(0);
-});
-};
-const selPC = el('select', ''); selPC.style.width = '100%';
-pObj.caracs.forEach(function(c) { const o = el('option', '', '+1 ' + c); o.value = c; if (d.peuple_carac === c) o.selected = true; selPC.appendChild(o); });
-selPC.onchange = function() { applyCareerMutation(function(cand) { cand.peuple_carac = selPC.value; }); };
-const pTal = (d.talents_lvl1 || new Array()).at(0) || '';
-const selPT = el('select', ''); selPT.style.width = '100%';
-const optP0 = el('option', '', '— Talent Peuple —'); optP0.value = ''; selPT.appendChild(optP0);
-pObj.talents.forEach(function(tName) {
-const ok = (tName === pTal) || isTalentEligible(tName, curCaracs, new Array(), 1, {});
-const o = el('option', '', tName + (ok ? '' : ' (Prérequis non remplis)')); o.value = tName; o.disabled = !ok;
-if (pTal === tName) o.selected = true;
-selPT.appendChild(o);
-});
-selPT.onchange = function() { applyCareerMutation(function(cand) { cand.talents_lvl1[0] = selPT.value; }); };
-pDiv.appendChild(selP); pDiv.appendChild(selPC); pDiv.appendChild(selPT);
-const pChList = getChoicesForTalent(pTal, {});
-if (pTal && pChList) {
-const curPCh = getChoiceForInstance(d.talent_choices_lvl1, pTal, 0);
-const selPSub = el('select', ''); selPSub.style.width = '100%'; selPSub.style.background = '#fef3c7';
-pChList.forEach(function(ch) { const o = el('option', '', 'Option : ' + ch); o.value = ch; if (curPCh === ch) o.selected = true; selPSub.appendChild(o); });
-selPSub.onchange = function() {
-applyCareerMutation(function(cand) {
-if (!cand.talent_choices_lvl1[pTal]) cand.talent_choices_lvl1[pTal] = new Array();
-cand.talent_choices_lvl1[pTal][0] = selPSub.value;
-});
-};
-pDiv.appendChild(selPSub);
-pushCurChoice(pTal, curPCh);
-}
-if (pTal) curTalents.push(pTal);
-origGrid.appendChild(pDiv);
-const cObj = RULES.cultures.find(function(c) { return c.nom === d.culture; }) || RULES.cultures.at(0);
-const cDiv = el('div', 'space-y-2');
-cDiv.appendChild(el('strong', '', 'Culture :'));
-const selC = el('select', ''); selC.style.width = '100%';
-RULES.cultures.forEach(function(c) { const o = el('option', '', c.nom); o.value = c.nom; if (d.culture === c.nom) o.selected = true; selC.appendChild(o); });
-selC.onchange = function() {
-applyCareerMutation(function(cand) {
-const nc = RULES.cultures.find(function(x) { return x.nom === selC.value; });
-cand.culture = nc.nom;
-cand.culture_carac = nc.caracs.at(0);
-cand.talents_lvl1[1] = nc.talents.at(0);
-});
-};
-const selCC = el('select', ''); selCC.style.width = '100%';
-cObj.caracs.forEach(function(c) { const o = el('option', '', '+1 ' + c); o.value = c; if (d.culture_carac === c) o.selected = true; selCC.appendChild(o); });
-selCC.onchange = function() { applyCareerMutation(function(cand) { cand.culture_carac = selCC.value; }); };
-const cTal = (d.talents_lvl1 || new Array()).at(1) || '';
-const selCT = el('select', ''); selCT.style.width = '100%';
-const optC0 = el('option', '', '— Talent Culture —'); optC0.value = ''; selCT.appendChild(optC0);
-cObj.talents.forEach(function(tName) {
-const ok = (tName === cTal) || isTalentEligible(tName, curCaracs, curTalents, 1, curChoices);
-const o = el('option', '', tName + (ok ? '' : ' (Prérequis non remplis)')); o.value = tName; o.disabled = !ok;
-if (cTal === tName) o.selected = true;
-selCT.appendChild(o);
-});
-selCT.onchange = function() { applyCareerMutation(function(cand) { cand.talents_lvl1[1] = selCT.value; }); };
-cDiv.appendChild(selC); cDiv.appendChild(selCC); cDiv.appendChild(selCT);
-const cChList = getChoicesForTalent(cTal, curChoices);
-if (cTal && cChList) {
-const occC = (cTal === pTal) ? 1 : 0;
-const curCCh = getChoiceForInstance(d.talent_choices_lvl1, cTal, occC);
-const usedC = curChoices[cTal] || new Array();
-const selCSub = el('select', ''); selCSub.style.width = '100%'; selCSub.style.background = '#fef3c7';
-cChList.filter(function(ch) { return ch === curCCh || !usedC.includes(ch); }).forEach(function(ch) {
-const o = el('option', '', 'Option : ' + ch); o.value = ch; if (curCCh === ch) o.selected = true; selCSub.appendChild(o);
-});
-selCSub.onchange = function() {
-applyCareerMutation(function(cand) {
-if (!cand.talent_choices_lvl1[cTal]) cand.talent_choices_lvl1[cTal] = new Array();
-cand.talent_choices_lvl1[cTal][occC] = selCSub.value;
-});
-};
-cDiv.appendChild(selCSub);
-pushCurChoice(cTal, curCCh);
-}
-if (cTal) curTalents.push(cTal);
-origGrid.appendChild(cDiv);
-const clObj = RULES.classes.find(function(c) { return c.nom === d.classe; }) || RULES.classes.at(0);
-const clDiv = el('div', 'space-y-2');
-clDiv.appendChild(el('strong', '', 'Classe (4 talents) :'));
-const selCl = el('select', ''); selCl.style.width = '100%';
-RULES.classes.forEach(function(c) { const o = el('option', '', c.nom); o.value = c.nom; if (d.classe === c.nom) o.selected = true; selCl.appendChild(o); });
-selCl.onchange = function() {
-applyCareerMutation(function(cand) {
-cand.classe = selCl.value;
-cand.talents_lvl1 = new Array(cand.talents_lvl1[0] || '', cand.talents_lvl1[1] || '', '', '', '', '');
-});
-};
-clDiv.appendChild(selCl);
-for (let slotIdx = 2; slotIdx < 6; slotIdx++) {
-const slotTal = (d.talents_lvl1 || new Array()).at(slotIdx) || '';
-const selSlot = el('select', ''); selSlot.style.width = '100%'; selSlot.style.fontSize = '12px';
-const oEmpty = el('option', '', '— Talent Classe ' + (slotIdx - 1) + '/4 —'); oEmpty.value = ''; selSlot.appendChild(oEmpty);
-clObj.talents.forEach(function(tName) {
-const ok = (tName === slotTal) || isTalentEligible(tName, curCaracs, curTalents, 1, curChoices);
-const o = el('option', '', tName + (ok ? '' : ' (Non éligible)')); o.value = tName; o.disabled = !ok;
-if (slotTal === tName) o.selected = true;
-selSlot.appendChild(o);
-});
-selSlot.onchange = function() {
-applyCareerMutation(function(cand) { cand.talents_lvl1[slotIdx] = selSlot.value; });
-};
-clDiv.appendChild(selSlot);
+  bCancel.onclick = function() { toggleCareerEdit(char); };
+  actBtns.appendChild(bSave); actBtns.appendChild(bCancel);
+  topBar.appendChild(actBtns);
+  box.appendChild(topBar);
+
+  const lvl1Card = el('div', 'border space-y-3');
+  lvl1Card.style.background = '#fff';
+  lvl1Card.appendChild(el('strong', '', 'Niveau 1 — Création initiale'));
+
+  const cGrid = el('div', 'grid grid-cols-6');
+  const usedPts = Object.values(d.base_caracs || {}).reduce(function(a, b) { return a + (b - 8); }, 0);
+  RULES.caracteristiques.forEach(function(cName) {
+    const cell = el('div', 'border bg-stone-50');
+    cell.style.textAlign = 'center'; cell.style.padding = '4px';
+    cell.appendChild(el('div', '', cName));
+    const ctrl = el('div', 'flex');
+    ctrl.style.justifyContent = 'center'; ctrl.style.flexWrap = 'nowrap'; ctrl.style.gap = '4px';
+    const bM = el('button', '', '-'); bM.style.padding = '1px 6px';
+    bM.onclick = function() {
+      const minV = isFree ? 0 : 8;
+      if ((d.base_caracs[cName] || 8) <= minV) return;
+      applyCareerMutation(function(cand) { cand.base_caracs[cName] -= 1; });
+    };
+    const vSp = el('strong', '', String(d.base_caracs[cName] || 8));
+    const bP = el('button', '', '+'); bP.style.padding = '1px 6px';
+    bP.onclick = function() {
+      const maxV = isFree ? 20 : 12;
+      if ((d.base_caracs[cName] || 8) >= maxV) return;
+      if (!isFree && usedPts >= 14) return alert("Les 14 points de création sont déjà répartis (baissez d'abord une autre caractéristique).");
+      applyCareerMutation(function(cand) { cand.base_caracs[cName] += 1; });
+    };
+    ctrl.appendChild(bM); ctrl.appendChild(vSp); ctrl.appendChild(bP);
+    cell.appendChild(ctrl);
+    cGrid.appendChild(cell);
+  });
+  lvl1Card.appendChild(cGrid);
+
+  const curCaracs = Object.assign({}, d.base_caracs || {});
+  const curTalents = new Array();
+  const curChoices = {};
+  const pushCurChoice = function(t, ch) {
+    if (!t || !ch) return;
+    if (!curChoices[t]) curChoices[t] = new Array();
+    curChoices[t].push(ch);
+  };
+
+  if (!isFree) {
+    if (d.peuple_carac) curCaracs[d.peuple_carac] = (curCaracs[d.peuple_carac] || 8) + 1;
+    if (d.culture_carac) curCaracs[d.culture_carac] = (curCaracs[d.culture_carac] || 8) + 1;
+
+    const origGrid = el('div', 'grid grid-cols-3');
+
+    const pObj = RULES.peuples.find(function(p) { return p.nom === d.peuple; }) || RULES.peuples.at(0);
+    const pDiv = el('div', 'space-y-2');
+    pDiv.appendChild(el('strong', '', 'Peuple :'));
+    const selP = el('select', ''); selP.style.width = '100%';
+    RULES.peuples.forEach(function(p) { const o = el('option', '', p.nom); o.value = p.nom; if (d.peuple === p.nom) o.selected = true; selP.appendChild(o); });
+    selP.onchange = function() {
+      applyCareerMutation(function(cand) {
+        const np = RULES.peuples.find(function(x) { return x.nom === selP.value; });
+        cand.peuple = np.nom;
+        cand.peuple_carac = np.caracs.at(0);
+        cand.talents_lvl1[0] = np.talents.at(0);
+      });
+    };
+    const selPC = el('select', ''); selPC.style.width = '100%';
+    pObj.caracs.forEach(function(c) { const o = el('option', '', '+1 ' + c); o.value = c; if (d.peuple_carac === c) o.selected = true; selPC.appendChild(o); });
+    selPC.onchange = function() { applyCareerMutation(function(cand) { cand.peuple_carac = selPC.value; }); };
+
+    const pTal = (d.talents_lvl1 || new Array()).at(0) || '';
+    const selPT = el('select', ''); selPT.style.width = '100%';
+    const optP0 = el('option', '', '— Talent Peuple —'); optP0.value = ''; selPT.appendChild(optP0);
+    pObj.talents.forEach(function(tName) {
+      const ok = (tName === pTal) || isTalentEligible(tName, curCaracs, new Array(), 1, {});
+      const o = el('option', '', tName + (ok ? '' : ' (Prérequis non remplis)')); o.value = tName; o.disabled = !ok;
+      if (pTal === tName) o.selected = true;
+      selPT.appendChild(o);
+    });
+    selPT.onchange = function() { applyCareerMutation(function(cand) { cand.talents_lvl1[0] = selPT.value; }); };
+    pDiv.appendChild(selP); pDiv.appendChild(selPC); pDiv.appendChild(selPT);
+
+    const pChList = getChoicesForTalent(pTal, {});
+    if (pTal && pChList) {
+      const curPCh = getChoiceForInstance(d.talent_choices_lvl1, pTal, 0);
+      const selPSub = el('select', ''); selPSub.style.width = '100%'; selPSub.style.background = '#fef3c7';
+      pChList.forEach(function(ch) { const o = el('option', '', 'Option : ' + ch); o.value = ch; if (curPCh === ch) o.selected = true; selPSub.appendChild(o); });
+      selPSub.onchange = function() {
+        applyCareerMutation(function(cand) {
+          if (!cand.talent_choices_lvl1[pTal]) cand.talent_choices_lvl1[pTal] = new Array();
+          cand.talent_choices_lvl1[pTal][0] = selPSub.value;
+        });
+      };
+      pDiv.appendChild(selPSub);
+      pushCurChoice(pTal, curPCh);
+    }
+    if (pTal) curTalents.push(pTal);
+    origGrid.appendChild(pDiv);
+
+    const cObj = RULES.cultures.find(function(c) { return c.nom === d.culture; }) || RULES.cultures.at(0);
+    const cDiv = el('div', 'space-y-2');
+    cDiv.appendChild(el('strong', '', 'Culture :'));
+    const selC = el('select', ''); selC.style.width = '100%';
+    RULES.cultures.forEach(function(c) { const o = el('option', '', c.nom); o.value = c.nom; if (d.culture === c.nom) o.selected = true; selC.appendChild(o); });
+    selC.onchange = function() {
+      applyCareerMutation(function(cand) {
+        const nc = RULES.cultures.find(function(x) { return x.nom === selC.value; });
+        cand.culture = nc.nom;
+        cand.culture_carac = nc.caracs.at(0);
+        cand.talents_lvl1[1] = nc.talents.at(0);
+      });
+    };
+    const selCC = el('select', ''); selCC.style.width = '100%';
+    cObj.caracs.forEach(function(c) { const o = el('option', '', '+1 ' + c); o.value = c; if (d.culture_carac === c) o.selected = true; selCC.appendChild(o); });
+    selCC.onchange = function() { applyCareerMutation(function(cand) { cand.culture_carac = selCC.value; }); };
+
+    const cTal = (d.talents_lvl1 || new Array()).at(1) || '';
+    const selCT = el('select', ''); selCT.style.width = '100%';
+    const optC0 = el('option', '', '— Talent Culture —'); optC0.value = ''; selCT.appendChild(optC0);
+    cObj.talents.forEach(function(tName) {
+      const ok = (tName === cTal) || isTalentEligible(tName, curCaracs, curTalents, 1, curChoices);
+      const o = el('option', '', tName + (ok ? '' : ' (Prérequis non remplis)')); o.value = tName; o.disabled = !ok;
+      if (cTal === tName) o.selected = true;
+      selCT.appendChild(o);
+    });
+    selCT.onchange = function() { applyCareerMutation(function(cand) { cand.talents_lvl1[1] = selCT.value; }); };
+    cDiv.appendChild(selC); cDiv.appendChild(selCC); cDiv.appendChild(selCT);
+
+    const cChList = getChoicesForTalent(cTal, curChoices);
+    if (cTal && cChList) {
+      const occC = (cTal === pTal) ? 1 : 0;
+      const curCCh = getChoiceForInstance(d.talent_choices_lvl1, cTal, occC);
+      const usedC = curChoices[cTal] || new Array();
+      const selCSub = el('select', ''); selCSub.style.width = '100%'; selCSub.style.background = '#fef3c7';
+      cChList.filter(function(ch) { return ch === curCCh || !usedC.includes(ch); }).forEach(function(ch) {
+        const o = el('option', '', 'Option : ' + ch); o.value = ch; if (curCCh === ch) o.selected = true; selCSub.appendChild(o);
+      });
+      selCSub.onchange = function() {
+        applyCareerMutation(function(cand) {
+          if (!cand.talent_choices_lvl1[cTal]) cand.talent_choices_lvl1[cTal] = new Array();
+          cand.talent_choices_lvl1[cTal][occC] = selCSub.value;
+        });
+      };
+      cDiv.appendChild(selCSub);
+      pushCurChoice(cTal, curCCh);
+    }
+    if (cTal) curTalents.push(cTal);
+    origGrid.appendChild(cDiv);
+
+    const clObj = RULES.classes.find(function(c) { return c.nom === d.classe; }) || RULES.classes.at(0);
+    const clDiv = el('div', 'space-y-2');
+    clDiv.appendChild(el('strong', '', 'Classe (4 talents) :'));
+    const selCl = el('select', ''); selCl.style.width = '100%';
+    RULES.classes.forEach(function(c) { const o = el('option', '', c.nom); o.value = c.nom; if (d.classe === c.nom) o.selected = true; selCl.appendChild(o); });
+    selCl.onchange = function() {
+      applyCareerMutation(function(cand) {
+        cand.classe = selCl.value;
+        cand.talents_lvl1 = new Array(cand.talents_lvl1[0] || '', cand.talents_lvl1[1] || '', '', '', '', '');
+      });
+    };
+    clDiv.appendChild(selCl);
+
+    for (let slotIdx = 2; slotIdx < 6; slotIdx++) {
+      const slotTal = (d.talents_lvl1 || new Array()).at(slotIdx) || '';
+      const selSlot = el('select', ''); selSlot.style.width = '100%'; selSlot.style.fontSize = '12px';
+      const oEmpty = el('option', '', '— Talent Classe ' + (slotIdx - 1) + '/4 —'); oEmpty.value = ''; selSlot.appendChild(oEmpty);
+      clObj.talents.forEach(function(tName) {
+        const ok = (tName === slotTal) || isTalentEligible(tName, curCaracs, curTalents, 1, curChoices);
+        const o = el('option', '', tName + (ok ? '' : ' (Non éligible)')); o.value = tName; o.disabled = !ok;
+        if (slotTal === tName) o.selected = true;
+        selSlot.appendChild(o);
+      });
+      selSlot.onchange = function() {
+        applyCareerMutation(function(cand) { cand.talents_lvl1[slotIdx] = selSlot.value; });
+      };
+      clDiv.appendChild(selSlot);
 if (slotTal) {
 const clChList = getChoicesForTalent(slotTal, curChoices);
 if (clChList) {
@@ -3437,6 +3489,102 @@ curTalents.push(slotTal);
 }
 origGrid.appendChild(clDiv);
 lvl1Card.appendChild(origGrid);
+} else {
+const freeTalWrap = el('div', 'space-y-2');
+freeTalWrap.appendChild(el('strong', '', 'Talents initiaux du PNJ / de la Créature :'));
+const addRow = el('div', 'flex');
+const inpF = el('input', '');
+inpF.type = 'text';
+inpF.placeholder = 'Filtrer un talent...';
+const selT = el('select', '');
+selT.style.maxWidth = '420px';
+const selSub = el('select', '');
+selSub.classList.add('hidden');
+selSub.style.background = '#fef3c7';
+(d.talents_lvl1 || new Array()).forEach(function(tName) {
+if (!tName) return;
+const occ = curTalents.filter(function(x) { return x === tName; }).length;
+const ch = getChoiceForInstance(d.talent_choices_lvl1, tName, occ);
+if (ch) pushCurChoice(tName, ch);
+curTalents.push(tName);
+});
+const updateSub = function() {
+const tName = selT.value;
+const chList = getChoicesForTalent(tName, curChoices);
+selSub.innerHTML = '';
+if (chList) {
+const used = curChoices[tName] || new Array();
+chList.filter(function(ch) { return !used.includes(ch); }).forEach(function(ch) {
+const o = el('option', '', ch);
+o.value = ch;
+selSub.appendChild(o);
+});
+selSub.classList.remove('hidden');
+} else {
+selSub.classList.add('hidden');
+}
+};
+const fillOpts = function() {
+const q = inpF.value.toLowerCase().trim();
+selT.innerHTML = '';
+RULES.talents.forEach(function(t) {
+if (isTalentEligible(t.nom, curCaracs, curTalents, 30, curChoices)) {
+if (!q || t.nom.toLowerCase().includes(q) || (t.effet && t.effet.toLowerCase().includes(q))) {
+const o = el('option', '', t.nom + (t.type === 'epique' ? ' [Épique]' : '') + ' — ' + t.effet);
+o.value = t.nom;
+selT.appendChild(o);
+}
+}
+});
+updateSub();
+};
+fillOpts();
+inpF.oninput = fillOpts;
+selT.onchange = updateSub;
+const bAdd = el('button', 'bg-purple-700', '+ Ajouter talent');
+bAdd.onclick = function() {
+const tName = selT.value;
+if (!tName) return;
+applyCareerMutation(function(cand) {
+if (!cand.talents_lvl1) cand.talents_lvl1 = new Array();
+cand.talents_lvl1.push(tName);
+if (!selSub.classList.contains('hidden') && selSub.value) {
+if (!cand.talent_choices_lvl1) cand.talent_choices_lvl1 = {};
+if (!cand.talent_choices_lvl1[tName]) cand.talent_choices_lvl1[tName] = new Array();
+cand.talent_choices_lvl1[tName].push(selSub.value);
+}
+});
+};
+addRow.appendChild(inpF);
+addRow.appendChild(selT);
+addRow.appendChild(selSub);
+addRow.appendChild(bAdd);
+freeTalWrap.appendChild(addRow);
+const badgesWrap = el('div', 'flex');
+const occBadge = {};
+(d.talents_lvl1 || new Array()).forEach(function(tName, idx) {
+const occ = occBadge[tName] || 0;
+occBadge[tName] = occ + 1;
+const ch = getChoiceForInstance(d.talent_choices_lvl1, tName, occ);
+const badge = el('span', 'border bg-stone-50', tName + (ch ? ' (' + ch + ')' : '') + ' ');
+badge.style.fontSize = '12px';
+const bDel = el('button', '', 'x');
+bDel.style.color = '#dc2626';
+bDel.style.padding = '1px 5px';
+bDel.onclick = function() {
+applyCareerMutation(function(cand) {
+cand.talents_lvl1.splice(idx, 1);
+if (cand.talent_choices_lvl1 && cand.talent_choices_lvl1[tName]) {
+cand.talent_choices_lvl1[tName].splice(occ, 1);
+if (cand.talent_choices_lvl1[tName].length === 0) delete cand.talent_choices_lvl1[tName];
+}
+});
+};
+badge.appendChild(bDel);
+badgesWrap.appendChild(badge);
+});
+freeTalWrap.appendChild(badgesWrap);
+lvl1Card.appendChild(freeTalWrap);
 }
 box.appendChild(lvl1Card);
 let prevPalierCarac = '';
@@ -3520,60 +3668,56 @@ const lvlTalArr = (d.level_talents || {})[lvl] || new Array();
 const lvlChObj = (d.level_talent_choices || {})[lvl] || {};
 const occThisLvl = {};
 const knownSortsSoFar = new Array();
-    for (let prevL = 2; prevL < lvl; prevL++) {
-      ((d.level_sorts || {})[prevL] || new Array()).forEach(function(s) { knownSortsSoFar.push(s); });
-    }
-
-    for (let sIdx = 0; sIdx < slotCount; sIdx++) {
-      const isEpSlot = (sIdx === 2);
-      const curT = lvlTalArr.at(sIdx) || '';
-      const tDiv = el('div', 'space-y-2');
-      tDiv.appendChild(el('div', '', isEpSlot ? 'Talent Épique :' : ('Talent commun ' + (sIdx + 1) + '/2 :')));
-      const selT = el('select', ''); selT.style.width = '100%'; selT.style.fontSize = '12px';
-      const oT0 = el('option', '', '— Choisir un talent —'); oT0.value = ''; selT.appendChild(oT0);
-
-      RULES.talents.filter(function(t) { return isEpSlot ? t.type === 'epique' : t.type === 'commun'; }).forEach(function(t) {
-        const ok = (t.nom === curT) || isTalentEligible(t.nom, curCaracs, curTalents, lvl, curChoices, knownSortsSoFar);
-        if (ok) {
-          const o = el('option', '', t.nom + ' — ' + t.effet); o.value = t.nom;
-          if (curT === t.nom) o.selected = true;
-          selT.appendChild(o);
-        }
-      });
-
-      selT.onchange = function() {
-        applyCareerMutation(function(cand) {
-          if (!cand.level_talents[lvl]) cand.level_talents[lvl] = new Array();
-          cand.level_talents[lvl][sIdx] = selT.value;
-        });
-      };
-      tDiv.appendChild(selT);
-
-      if (curT) {
-        const occ = occThisLvl[curT] || 0;
-        occThisLvl[curT] = occ + 1;
-        const chList = getChoicesForTalent(curT, curChoices, knownSortsSoFar);
-        if (chList) {
-          const curCh = getChoiceForInstance(lvlChObj, curT, occ);
-          const usedCh = curChoices[curT] || new Array();
-          const selSub = el('select', ''); selSub.style.width = '100%'; selSub.style.background = '#fef3c7'; selSub.style.fontSize = '11px';
-          chList.filter(function(ch) { return ch === curCh || !usedCh.includes(ch); }).forEach(function(ch) {
-            const o = el('option', '', 'Option : ' + ch); o.value = ch; if (curCh === ch) o.selected = true; selSub.appendChild(o);
-          });
-          selSub.onchange = function() {
-            applyCareerMutation(function(cand) {
-              if (!cand.level_talent_choices[lvl]) cand.level_talent_choices[lvl] = {};
-              if (!cand.level_talent_choices[lvl][curT]) cand.level_talent_choices[lvl][curT] = new Array();
-              cand.level_talent_choices[lvl][curT][occ] = selSub.value;
-            });
-          };
-          tDiv.appendChild(selSub);
-          pushCurChoice(curT, curCh);
-        }
-        curTalents.push(curT);
-      }
-      lGrid.appendChild(tDiv);
-    }
+for (let prevL = 2; prevL < lvl; prevL++) {
+((d.level_sorts || {})[prevL] || new Array()).forEach(function(s) { knownSortsSoFar.push(s); });
+}
+for (let sIdx = 0; sIdx < slotCount; sIdx++) {
+const isEpSlot = (sIdx === 2);
+const curT = lvlTalArr.at(sIdx) || '';
+const tDiv = el('div', 'space-y-2');
+tDiv.appendChild(el('div', '', isEpSlot ? 'Talent Épique :' : ('Talent commun ' + (sIdx + 1) + '/2 :')));
+const selT = el('select', ''); selT.style.width = '100%'; selT.style.fontSize = '12px';
+const oT0 = el('option', '', '— Choisir un talent —'); oT0.value = ''; selT.appendChild(oT0);
+RULES.talents.filter(function(t) { return isEpSlot ? t.type === 'epique' : t.type === 'commun'; }).forEach(function(t) {
+const ok = (t.nom === curT) || isTalentEligible(t.nom, curCaracs, curTalents, lvl, curChoices, knownSortsSoFar);
+if (ok) {
+const o = el('option', '', t.nom + ' — ' + t.effet); o.value = t.nom;
+if (curT === t.nom) o.selected = true;
+selT.appendChild(o);
+}
+});
+selT.onchange = function() {
+applyCareerMutation(function(cand) {
+if (!cand.level_talents[lvl]) cand.level_talents[lvl] = new Array();
+cand.level_talents[lvl][sIdx] = selT.value;
+});
+};
+tDiv.appendChild(selT);
+if (curT) {
+const occ = occThisLvl[curT] || 0;
+occThisLvl[curT] = occ + 1;
+const chList = getChoicesForTalent(curT, curChoices, knownSortsSoFar);
+if (chList) {
+const curCh = getChoiceForInstance(lvlChObj, curT, occ);
+const usedCh = curChoices[curT] || new Array();
+const selSub = el('select', ''); selSub.style.width = '100%'; selSub.style.background = '#fef3c7'; selSub.style.fontSize = '11px';
+chList.filter(function(ch) { return ch === curCh || !usedCh.includes(ch); }).forEach(function(ch) {
+const o = el('option', '', 'Option : ' + ch); o.value = ch; if (curCh === ch) o.selected = true; selSub.appendChild(o);
+});
+selSub.onchange = function() {
+applyCareerMutation(function(cand) {
+if (!cand.level_talent_choices[lvl]) cand.level_talent_choices[lvl] = {};
+if (!cand.level_talent_choices[lvl][curT]) cand.level_talent_choices[lvl][curT] = new Array();
+cand.level_talent_choices[lvl][curT][occ] = selSub.value;
+});
+};
+tDiv.appendChild(selSub);
+pushCurChoice(curT, curCh);
+}
+curTalents.push(curT);
+}
+lGrid.appendChild(tDiv);
+}
 lCard.appendChild(lGrid);
 const lvlSorts = (d.level_sorts || {})[lvl] || new Array();
 if (lvlSorts.length > 0) {
@@ -3604,6 +3748,8 @@ box.appendChild(lCard);
 }
 container.appendChild(box);
 }
+
+
 async function saveCareerEdition(charId) {
 const cleanData = JSON.parse(JSON.stringify(CAREER_DRAFT));
 delete cleanData._level;

@@ -1661,7 +1661,11 @@ function renderManageSheet() {
   const isOwner = char.owner_id === CURRENT_USER.id;
   const st = getEffectiveState(char);
 
-  const header = el('div', 'flex justify-between border bg-stone-50');
+  const header = el('div', 'border bg-stone-50 space-y-3');
+
+  const topRow = el('div', 'flex justify-between');
+  topRow.style.alignItems = 'flex-start';
+
   const titleWrap = el('div', 'flex');
   const mPortrait = el('img', 'portrait-img');
   mPortrait.id = 'manage-portrait-preview';
@@ -1686,19 +1690,31 @@ function renderManageSheet() {
     titleBox.appendChild(bPort);
   }
   titleWrap.appendChild(titleBox);
-  header.appendChild(titleWrap);
+  topRow.appendChild(titleWrap);
 
   if (isOwner) {
-    const ctrl = el('div', 'flex');
-    const bEditCareer = el('button', 'bg-blue-700', CAREER_EDIT_CHAR_ID === char.id ? 'Fermer l’édition' : 'Éditer le plan de carrière');
-    bEditCareer.onclick = function() { toggleCareerEdit(char); };
-    ctrl.appendChild(bEditCareer);
+    const adminCtrl = el('div', 'flex');
+    adminCtrl.style.gap = '6px';
+    const bDup = el('button', '', 'Dupliquer'); bDup.style.fontSize = '12px'; bDup.onclick = function() { duplicateCharacter(char.id); };
+    const bPub = el('button', '', char.is_public ? 'Masquer' : 'Rendre public'); bPub.style.fontSize = '12px'; bPub.onclick = function() { togglePublic(char.id); };
+    const bTrans = el('button', '', 'Transférer'); bTrans.style.fontSize = '12px'; bTrans.onclick = function() { transferCharacter(char.id); };
+    const bDel = el('button', 'bg-rose-700', 'Supprimer'); bDel.style.fontSize = '12px'; bDel.style.marginLeft = '8px'; bDel.onclick = function() { deleteCharacter(char.id); };
+    adminCtrl.appendChild(bDup); adminCtrl.appendChild(bPub); adminCtrl.appendChild(bTrans); adminCtrl.appendChild(bDel);
+    topRow.appendChild(adminCtrl);
+  }
+  header.appendChild(topRow);
 
-    ctrl.appendChild(el('strong', '', 'Niveau réel : ' + char.level));
+  if (isOwner) {
+    const lvlRow = el('div', 'flex justify-between');
+    lvlRow.style.borderTop = '1px solid #e7e5e4';
+    lvlRow.style.paddingTop = '8px';
+
+    const lvlLeft = el('div', 'flex');
+    lvlLeft.appendChild(el('strong', '', 'Niveau réel : ' + char.level));
     if (char.level > 1) {
       const bDown = el('button', '', '-1 Niv');
       bDown.onclick = function() { revertLastLevel(char.id); };
-      ctrl.appendChild(bDown);
+      lvlLeft.appendChild(bDown);
     }
     const selEff = el('select', '');
     for (let i = 1; i <= char.level; i++) {
@@ -1707,13 +1723,14 @@ function renderManageSheet() {
       selEff.appendChild(o);
     }
     selEff.onchange = function() { setEffectiveLevel(char.id, selEff.value); };
-    const bDup = el('button', '', 'Dupliquer'); bDup.onclick = function() { duplicateCharacter(char.id); };
-    const bPub = el('button', '', char.is_public ? 'Masquer' : 'Rendre public'); bPub.onclick = function() { togglePublic(char.id); };
-    const bTrans = el('button', '', 'Transférer'); bTrans.onclick = function() { transferCharacter(char.id); };
-    const bDel = el('button', 'bg-rose-700', 'Supprimer'); bDel.onclick = function() { deleteCharacter(char.id); };
-    ctrl.appendChild(selEff); ctrl.appendChild(bDup); ctrl.appendChild(bPub); ctrl.appendChild(bTrans); ctrl.appendChild(bDel);
+    lvlLeft.appendChild(selEff);
 
-    header.appendChild(ctrl);
+    const bEditCareer = el('button', 'bg-blue-700', CAREER_EDIT_CHAR_ID === char.id ? 'Fermer l’édition' : 'Éditer le plan de carrière');
+    bEditCareer.onclick = function() { toggleCareerEdit(char); };
+
+    lvlRow.appendChild(lvlLeft);
+    lvlRow.appendChild(bEditCareer);
+    header.appendChild(lvlRow);
   }
   container.appendChild(header);
 
@@ -1821,8 +1838,6 @@ function renderManageSheet() {
   eqBox.appendChild(invList);
   container.appendChild(eqBox);
 }
-
-
 
 
 

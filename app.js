@@ -2463,7 +2463,9 @@ function computeCombatStats(char, p) {
 
   const defaultFists = { nom: "Poings", categorie: "Arme", famille: "Lutte", mains: 1, poids: 0, force_min: 5, degat: 0, portee: 0 };
   const mainWeapon = st.equipped['MainPrincipale'] || st.inv.at(st.worn['MainPrincipale']) || defaultFists;
-  const secItem = st.equipped['MainSecondaire'] || st.inv.at(st.worn['MainSecondaire']) || null;
+  const rawSec = st.equipped['MainSecondaire'] || st.inv.at(st.worn['MainSecondaire']) || null;
+  const secItem = (rawSec && rawSec.nom !== 'Poings') ? rawSec : null;
+
 
   const isRanged = new Array('Arcs', 'Arbalètes', 'Frondes', 'Armes de jet').includes(mainWeapon.famille);
   const cov = getCoverTotals();

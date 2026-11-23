@@ -1622,20 +1622,32 @@ async function transferCharacter(charId) {
 
 
 function renderManageSheet() {
-  const charId = document.getElementById('sheet-char-select').value;
-  const char = CHARACTERS.find(function(c) { return c.id === charId; });
-  const container = document.getElementById('manage-sheet-container');
-  container.innerHTML = '';
-  if (!char) { container.textContent = "Aucun personnage sélectionné."; return; }
+const header = el('div', 'flex justify-between border bg-stone-50');
+  const titleWrap = el('div', 'flex');
+  const mPortrait = el('img', 'portrait-img');
+  mPortrait.id = 'manage-portrait-preview';
+  mPortrait.src = char.data.portrait || 'data:image/svg+xml;utf8,<svg xmlns="http://w3.org" width="64" height="64"><rect width="64" height="64" fill="%23d6d3d1"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-size="24" fill="%2357534e">?</text></svg>';
+  titleWrap.appendChild(mPortrait);
 
-  const isOwner = char.owner_id === CURRENT_USER.id;
-  const st = getEffectiveState(char);
-
-  const header = el('div', 'flex justify-between border bg-stone-50');
   const titleBox = el('div', '');
   titleBox.appendChild(el('strong', '', char.name + (char.is_public ? '' : ' [Masqué]')));
   titleBox.appendChild(el('div', '', char.data.peuple + ' • ' + char.data.culture + ' • ' + char.data.classe + ' • Force : ' + st.caracs['Force'] + ' • Agi : ' + st.caracs['Agilité']));
-  header.appendChild(titleBox);
+  if (isOwner) {
+    const inpPort = el('input', '');
+    inpPort.type = 'file';
+    inpPort.accept = 'image/*';
+    inpPort.style.display = 'none';
+    inpPort.onchange = function() { openPortraitCropper(inpPort, 'edit', char.id); };
+
+    const bPort = el('button', '', 'Changer le portrait');
+    bPort.style.fontSize = '11px';
+    bPort.style.marginTop = '4px';
+    bPort.onclick = function() { inpPort.click(); };
+    titleBox.appendChild(inpPort);
+    titleBox.appendChild(bPort);
+  }
+  titleWrap.appendChild(titleBox);
+  header.appendChild(titleWrap);
 
   if (isOwner) {
     const ctrl = el('div', 'flex');
@@ -3772,14 +3784,14 @@ await updateCharData(charId, cleanData);
 alert("Plan de carrière mis à jour !");
 }
 
-function openPortraitCropper(input, mode) {
+function openPortraitCropper(input, mode, targetCharId) {
   const file = input.files.item(0);
   if (!file) return;
   const reader = new FileReader();
   reader.onload = function(ev) {
     const img = new Image();
     img.onload = function() {
-      showCropModal(img, mode);
+      showCropModal(img, mode, targetCharId);
     };
     img.src = ev.target.result;
   };
@@ -3787,7 +3799,7 @@ function openPortraitCropper(input, mode) {
   input.value = '';
 }
 
-function showCropModal(img, mode) {
+function showCropModal(img, mode, targetCharId) {
   const existing = document.getElementById('portrait-crop-modal');
   if (existing) existing.remove();
 
@@ -3993,7 +4005,7 @@ function showCropModal(img, mode) {
   bCancel.onclick = cleanup;
 
   const bOk = el('button', 'bg-emerald-800', 'Valider ce portrait');
-  bOk.onclick = function() {
+  bOk.onclick = async function() {
     const outCanvas = document.createElement('canvas');
     outCanvas.width = 128;
     outCanvas.height = 128;
@@ -4007,6 +4019,13 @@ function showCropModal(img, mode) {
       FREE_PORTRAIT = dataUrl;
       const prev = document.getElementById('fc-portrait-preview');
       if (prev) prev.src = dataUrl;
+    } else if (mode === 'edit' && targetCharId) {
+      cleanup();
+      if (CAREER_EDIT_CHAR_ID === targetCharId && CAREER_DRAFT) {
+        CAREER_DRAFT.portrait = dataUrl;
+      }
+      await updateCharField(targetCharId, 'portrait', dataUrl);
+      return;
     } else {
       CREATE_PORTRAIT = dataUrl;
       const prev = document.getElementById('c-portrait-preview');
@@ -4022,6 +4041,7 @@ function showCropModal(img, mode) {
   document.body.appendChild(overlay);
   draw();
 }
+
 
 
 init();

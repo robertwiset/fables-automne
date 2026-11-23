@@ -1316,6 +1316,23 @@ function onClassTalentToggle(chk) {
   updateCreationTalents();
 }
 
+function normFamilyName(f) {
+  if (!f) return '';
+  const clean = f.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  const map = {
+    'arbalete': 'arbaletes', 'arbaletes': 'arbaletes',
+    'arc': 'arcs', 'arcs': 'arcs',
+    'arme de jet': 'armes de jet', 'armes de jet': 'armes de jet',
+    'arme de poing': 'armes de poing', 'armes de poing': 'armes de poing',
+    "arme d'hast": "armes d'hast", "armes d'hast": "armes d'hast",
+    'arme de taille': 'armes de taille', 'armes de taille': 'armes de taille',
+    'fleau': 'fleaux', 'fleaux': 'fleaux',
+    'fronde': 'frondes', 'frondes': 'frondes',
+    'lutte': 'lutte'
+  };
+  return map[clean] || clean;
+}
+
 function getChoicesForTalent(tName, acquiredChoicesMap, knownSortsList) {
   const t = RULES.talents.find(function(x) { return x.nom === tName; });
   if (!t) return null;
@@ -1333,6 +1350,20 @@ function getChoicesForTalent(tName, acquiredChoicesMap, knownSortsList) {
   if (tName === 'Maîtrise artisanale') {
     return (chMap['Artisanat'] || new Array()).slice();
   }
+  if (tName === 'Arme privilégiée') {
+    const trainedRaw = chMap['Entraînement aux armes'] || new Array();
+    const trainedNorm = trainedRaw.map(normFamilyName);
+    if (trainedNorm.length === 0) return new Array();
+    const weapons = (RULES.equipements || new Array()).filter(function(e) {
+      return e.categorie === 'Arme' && trainedNorm.includes(normFamilyName(e.famille));
+    });
+    const opts = new Array();
+    weapons.forEach(function(w) {
+      const label = w.famille + ' : ' + w.nom;
+      if (!opts.includes(label)) opts.push(label);
+    });
+    return opts;
+  }
   if (tName === 'Affinité magique') {
     const initV = chMap['Initiation magique'] || new Array();
     const sortV = sortsArr.map(function(s) { return s.voie; });
@@ -1348,6 +1379,7 @@ function getChoicesForTalent(tName, acquiredChoicesMap, knownSortsList) {
   if (t.choix && t.choix.length > 0) return t.choix;
   return null;
 }
+
 
 function isTalentEligible(talentName, caracs, acquiredTalents, targetLevel, acquiredChoicesMap, knownSortsList) {
   const lvl = targetLevel || 1;
@@ -2358,8 +2390,23 @@ function computeCombatStats(char, p) {
     if (secItem.categorie === 'Arme') att += (secItem.degat || 0);
     if (!st.talents.includes('Ambidextrie')) att -= 2;
   }
-  if (st.talents.includes('Entraînement aux armes')) att += 1;
+  const trainedFamilies = ((st.talentChoices && st.talentChoices['Entraînement aux armes']) ? st.talentChoices['Entraînement aux armes'] : new Array()).map(normFamilyName);
+  if (st.talents.includes('Entraînement aux armes') && trainedFamilies.includes(normFamilyName(mainWeapon.famille))) {
+    att += 1;
+  }
+
+  const privChoices = (st.talentChoices && st.talentChoices['Arme privilégiée']) ? st.talentChoices['Arme privilégiée'] : new Array();
+  const isPrivilegedWeapon = st.talents.includes('Arme privilégiée') && privChoices.some(function(ch) {
+    const parts = ch.split(' : ');
+    const wName = parts.length > 1 ? parts.slice(1).join(' : ') : ch;
+    return wName.toLowerCase().trim() === (mainWeapon.nom || '').toLowerCase().trim();
+  });
+  if (isPrivilegedWeapon) {
+    att += 1;
+  }
+
   if (st.talents.includes('Balayage') && mainWeapon.mains === 2 && !isRanged) att += 2;
+
   if (st.talents.includes('Charge') && p.posture === 'Agressif') att += 1;
   if (st.talents.includes('Tirailleur') && p.posture === 'Repli' && isRanged) att += 1;
   if (st.talents.includes('Acuité') && isRanged) att += 1;

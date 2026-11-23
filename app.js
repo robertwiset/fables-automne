@@ -1620,6 +1620,36 @@ async function transferCharacter(charId) {
   alert("Personnage transféré !");
 }
 
+async function duplicateCharacter(charId) {
+  const char = CHARACTERS.find(function(c) { return c.id === charId; });
+  if (!char) return;
+  const newName = prompt("Entrez le nom du personnage dupliqué :", char.name + " (Copie)");
+  if (!newName || !newName.trim()) return;
+
+  const clonedData = JSON.parse(JSON.stringify(char.data));
+  clonedData.blessures = {};
+  clonedData.fatigue = 0;
+  clonedData.emotion = "Aucune";
+
+  const res = await sb.from('characters').insert({
+    owner_id: CURRENT_USER.id,
+    owner_email: CURRENT_USER.email,
+    name: newName.trim(),
+    is_public: char.is_public,
+    level: char.level,
+    effective_level: char.effective_level,
+    data: clonedData
+  });
+
+  if (res.error) return alert("Erreur lors de la duplication : " + res.error.message);
+  await refreshAllData(true);
+  if (res.data && res.data.at(0)) {
+    const sheetSel = document.getElementById('sheet-char-select');
+    if (sheetSel) sheetSel.value = res.data.at(0).id;
+    renderManageSheet();
+  }
+  alert("Personnage '" + newName.trim() + "' dupliqué avec succès !");
+}
 
 function renderManageSheet() {
   const charId = document.getElementById('sheet-char-select').value;
@@ -1633,8 +1663,6 @@ function renderManageSheet() {
 
   const header = el('div', 'flex justify-between border bg-stone-50');
   const titleWrap = el('div', 'flex');
-
-  
   const mPortrait = el('img', 'portrait-img');
   mPortrait.id = 'manage-portrait-preview';
   mPortrait.src = char.data.portrait || 'data:image/svg+xml;utf8,<svg xmlns="http://w3.org" width="64" height="64"><rect width="64" height="64" fill="%23d6d3d1"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-size="24" fill="%2357534e">?</text></svg>';
@@ -1662,6 +1690,10 @@ function renderManageSheet() {
 
   if (isOwner) {
     const ctrl = el('div', 'flex');
+    const bEditCareer = el('button', 'bg-blue-700', CAREER_EDIT_CHAR_ID === char.id ? 'Fermer l’édition' : 'Éditer le plan de carrière');
+    bEditCareer.onclick = function() { toggleCareerEdit(char); };
+    ctrl.appendChild(bEditCareer);
+
     ctrl.appendChild(el('strong', '', 'Niveau réel : ' + char.level));
     if (char.level > 1) {
       const bDown = el('button', '', '-1 Niv');
@@ -1675,16 +1707,12 @@ function renderManageSheet() {
       selEff.appendChild(o);
     }
     selEff.onchange = function() { setEffectiveLevel(char.id, selEff.value); };
+    const bDup = el('button', '', 'Dupliquer'); bDup.onclick = function() { duplicateCharacter(char.id); };
     const bPub = el('button', '', char.is_public ? 'Masquer' : 'Rendre public'); bPub.onclick = function() { togglePublic(char.id); };
     const bTrans = el('button', '', 'Transférer'); bTrans.onclick = function() { transferCharacter(char.id); };
     const bDel = el('button', 'bg-rose-700', 'Supprimer'); bDel.onclick = function() { deleteCharacter(char.id); };
-    ctrl.appendChild(selEff); ctrl.appendChild(bPub); ctrl.appendChild(bTrans); ctrl.appendChild(bDel);
+    ctrl.appendChild(selEff); ctrl.appendChild(bDup); ctrl.appendChild(bPub); ctrl.appendChild(bTrans); ctrl.appendChild(bDel);
 
-    const bEditCareer = el('button', 'bg-blue-700', CAREER_EDIT_CHAR_ID === char.id ? 'Fermer l’édition' : 'Éditer le plan de carrière');
-    bEditCareer.onclick = function() { toggleCareerEdit(char); };
-    ctrl.insertBefore(bEditCareer, ctrl.firstChild);
-
-    
     header.appendChild(ctrl);
   }
   container.appendChild(header);
@@ -1793,6 +1821,7 @@ function renderManageSheet() {
   eqBox.appendChild(invList);
   container.appendChild(eqBox);
 }
+
 
 
 
